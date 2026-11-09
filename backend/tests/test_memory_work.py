@@ -174,6 +174,7 @@ def test_background_training_wait_does_not_block_metadata_or_change_graph(
             finish.set()
         assert graph.result(timeout=4).json() == expected
     assert application.state.run_manager.memory_gate is application.state.memory_gate
+    assert application.state.report_manager.memory_gate is application.state.memory_gate
 
 
 def test_http_waiter_does_not_enter_database_dependency(memory_client):

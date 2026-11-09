@@ -80,6 +80,36 @@
   line-height: 1.7;
   margin-top: 12px;
 }
+.training-evaluation-explanation {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--theme-text-secondary, #6c7e92);
+}
+.training-evaluation-outcome {
+  margin-bottom: 18px;
+  padding: 15px 18px;
+  border-left: 3px solid var(--theme-primary-border, #5089bd);
+  background: var(--theme-primary-surface, #eef5fc);
+  color: var(--theme-text-strong, #264b6d);
+  line-height: 1.7;
+}
+.training-evaluation-outcome strong {
+  font-size: 20px;
+}
+.training-evaluation-outcome p {
+  margin: 7px 0 0;
+  color: var(--theme-text-secondary, #60768b);
+  font-size: 12px;
+}
+.training-evaluation-explanation a {
+  color: var(--theme-primary, #2867b2);
+  text-decoration: underline;
+}
+.training-expert-metrics .dm-metric-grid .dm-caption {
+  margin-bottom: 0;
+  line-height: 1.65;
+}
 .training-split {
   margin: 20px 0 12px;
   display: grid;
@@ -227,6 +257,10 @@
   font-size: 16px;
   color: var(--theme-text-muted, #8192a3);
   font-weight: 400;
+  letter-spacing: 0;
+}
+.training-score-unavailable > strong {
+  font-size: 18px;
   letter-spacing: 0;
 }
 .training-score p {

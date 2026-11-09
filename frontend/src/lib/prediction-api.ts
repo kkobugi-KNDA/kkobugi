@@ -1,4 +1,4 @@
-import { API_BASE, ApiError } from './api';
+import { API_BASE, ApiError, serverErrorMessage } from './api';
 import type { ModelKey } from '../types';
 import type { SelectedRange } from '../components/TimeSeriesChart';
 
@@ -91,7 +91,7 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
     if (response.status === 401) window.dispatchEvent(new Event('kkobugi:unauthorized'));
     throw new ApiError(
-      body.error?.message || '예측 결과를 불러오지 못했어요.',
+      body.error?.message || serverErrorMessage(response.status, '예측 결과를 불러오지 못했어요.'),
       response.status,
       body.error?.code,
       body.error?.fields,

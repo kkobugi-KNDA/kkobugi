@@ -25,6 +25,14 @@ export class ApiError extends Error {
   }
 }
 export const API_BASE = (import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '');
+
+// 프록시가 HTML 오류를 돌려줘도 CSV 문제와 서버 응답 문제를 구분해 안내한다.
+export function serverErrorMessage(status: number, fallback = '요청을 처리하지 못했어요.'): string {
+  if ([502, 503, 504].includes(status))
+    return `서버가 잠시 응답하지 못하고 있어요. 잠시 후 다시 시도해주세요. (${status})`;
+  return `${fallback} (${status})`;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !(init.body instanceof FormData))
@@ -42,7 +50,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (response.status === 401 && !path.startsWith('/auth/'))
       window.dispatchEvent(new Event('kkobugi:unauthorized'));
     throw new ApiError(
-      body.error?.message || `요청을 처리하지 못했어요. (${response.status})`,
+      body.error?.message || serverErrorMessage(response.status),
       response.status,
       body.error?.code,
       body.error?.fields,
@@ -94,7 +102,10 @@ export const api = {
     });
     if (!response.ok) {
       if (response.status === 401) window.dispatchEvent(new Event('kkobugi:unauthorized'));
-      throw new ApiError('CSV를 불러오지 못했어요.', response.status);
+      throw new ApiError(
+        serverErrorMessage(response.status, 'CSV를 불러오지 못했어요.'),
+        response.status,
+      );
     }
     return new File([await response.blob()], 'dataset.csv', { type: 'text/csv' });
   },

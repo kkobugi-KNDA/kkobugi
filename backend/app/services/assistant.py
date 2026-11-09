@@ -450,7 +450,7 @@ def create_message(
     else:
         introduction = (
             f"선택한 {snapshot.model_name}의 확인용 데이터 점수는 {score_text}이다. "
-            f"{metric_name} 전체의 UnNormal F1에 100을 곱한 점수이며 고장일 확률을 뜻하지 않는다."
+            f"{metric_name} 전체의 Abnormal F1에 100을 곱한 점수이며 고장일 확률을 뜻하지 않는다."
         )
 
     paragraphs = [introduction]

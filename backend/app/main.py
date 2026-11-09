@@ -57,7 +57,7 @@ def create_app(
             application.state.run_manager = run_manager
 
             # 보고서는 기존 DB를 바꾸지 않고 같은 영구 저장공간에 별도로 보관한다.
-            report_manager = ReportManager(settings)
+            report_manager = ReportManager(settings, memory_gate=memory_gate)
 
             report_manager.recover_interrupted()
             application.state.report_manager = report_manager

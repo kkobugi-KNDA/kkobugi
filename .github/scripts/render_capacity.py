@@ -148,6 +148,15 @@ def prepare_fixture(directory: Path, report: dict) -> tuple[Path, str, str]:
         "preparation": "All 220320 rows; documented 49 channels; forward fill only; NORMAL=0, BROKEN/RECOVERING=1.",
         "split_rows": [132_192, 44_064, 44_064],
         "normal_train_rows": int(frame.iloc[:132_192]["label"].eq(0).sum()),
+        "partition_periods": {
+            name: {"start_time": str(frame.iloc[start]["timestamp"]),
+                   "end_time": str(frame.iloc[end - 1]["timestamp"]),
+                   "normal_rows": int(frame.iloc[start:end]["label"].eq(0).sum()),
+                   "abnormal_rows": int(frame.iloc[start:end]["label"].eq(1).sum())}
+            for name, start, end in [("train", 0, 132_192),
+                                     ("validation", 132_192, 176_256),
+                                     ("test", 176_256, SOURCE_ROWS)]
+        },
     }
     return prepared, train_end, validation_end
 
@@ -291,6 +300,160 @@ def main() -> int:
                         raise RuntimeError(model + " training exceeded 180 seconds")
                     training["wall_seconds"] = round(time.monotonic() - model_started, 3)
 
+                    # Test 평가는 명시적으로 선택한 모델에 한 번만 실행한다.
+                    phase("evaluate_test_" + model)
+                    expect(client.post(f"/api/v1/runs/{run_id}/selection",
+                                       json={"model_key": model}), 200, model + " selection")
+                    evaluation_started = time.monotonic()
+
+                    expect(client.post(f"/api/v1/runs/{run_id}/evaluation"),
+                           202, model + " Test submission")
+                    while time.monotonic() - evaluation_started < 120:
+                        evaluation = expect(client.get(f"/api/v1/runs/{run_id}/evaluation",
+                                                       timeout=10), 200, model + " Test status").json()
+
+                        health(client)
+                        if evaluation["status"] == "failed":
+                            raise RuntimeError(model + " Test evaluation failed")
+                        if evaluation["status"] == "completed":
+                            break
+                        time.sleep(0.5)
+                    else:
+                        raise RuntimeError(model + " Test evaluation exceeded 120 seconds")
+                    metrics = evaluation["metrics"]
+
+                    matrix = metrics["confusion_matrix"]
+
+                    if (metrics["sample_count"] != 44_064
+                            or sum(sum(row) for row in matrix) != 44_064
+                            or sum(matrix[1]) != 0
+                            or metrics["recall"] is not None or metrics["f1"] is not None
+                            or abs(metrics["accuracy"] - matrix[0][0] / 44_064) > 1e-12):
+                        raise RuntimeError("Normal-only Test metric semantics changed")
+                    training["test_evaluation"] = {
+                        "status": evaluation["status"],
+                        "wall_seconds": round(time.monotonic() - evaluation_started, 3),
+                        "metrics": {key: metrics[key] for key in
+                                    ["sample_count", "accuracy", "precision", "recall", "f1",
+                                     "confusion_matrix", "warnings"]},
+                        "scope": "Test is all Normal; accuracy is measured separately from undefined anomaly recall/F1.",
+                    }
+
+                    # 작은 응답도 22만 행×49채널 전체 행렬을 만들면 512 MiB에서 실패한다.
+                    # 따라서 학습 성공만 보지 않고 실제 결과 화면의 조회 경로를 확인한다.
+                    phase("prediction_pages_and_intervals_" + model)
+                    reads = []
+
+                    training["read_endpoints"] = reads
+                    for partition, first_row, row_count in [
+                        ("validation", 132_192, 44_064), ("test", 176_256, 44_064)
+                    ]:
+                        for offset, page_size in [(0, 1000), (row_count - 3, 3)]:
+                            read_started = time.monotonic()
+
+                            predictions = expect(client.get(f"/api/v1/runs/{run_id}/predictions",
+                                params={"split": partition, "model_key": model,
+                                        "limit": page_size, "offset": offset}, timeout=90),
+                                200, model + " " + partition + " prediction page").json()
+
+                            if (predictions["total"] != row_count
+                                    or len(predictions["items"]) != page_size
+                                    or [point["row_index"] for point in predictions["items"]]
+                                    != list(range(first_row + offset, first_row + offset + page_size))
+                                    or predictions["split"] != partition
+                                    or predictions["model_key"] != model):
+                                raise RuntimeError("Prediction page row count, model or partition changed")
+                            if partition == "test" and any(point["actual_code"] != 0
+                                                          for point in predictions["items"]):
+                                raise RuntimeError("Normal-only Test page contains a different actual label")
+                            reads.append({"operation": "predictions", "split": partition,
+                                          "offset": offset, "returned_count": len(predictions["items"]),
+                                          "total": predictions["total"], "http_status": 200,
+                                          "wall_seconds": round(time.monotonic() - read_started, 3)})
+                            health(client)
+                        for code in (0, 1):
+                            read_started = time.monotonic()
+
+                            intervals = expect(client.get(f"/api/v1/runs/{run_id}/prediction-intervals",
+                                params={"split": partition, "model_key": model,
+                                        "predicted_code": code, "limit": 5}, timeout=90),
+                                200, model + " " + partition + " prediction intervals").json()
+
+                            if (len(intervals["items"]) > 5
+                                    or intervals["total"] < len(intervals["items"])
+                                    or intervals["predicted_code"] != code
+                                    or any(not (first_row <= item["start_row"] < item["end_row"]
+                                                <= first_row + row_count)
+                                           or item["row_count"] != item["end_row"] - item["start_row"]
+                                           for item in intervals["items"])):
+                                raise RuntimeError("Prediction interval pagination or partition changed")
+                            reads.append({"operation": "prediction-intervals", "split": partition,
+                                          "predicted_code": code, "returned_count": len(intervals["items"]),
+                                          "total": intervals["total"], "http_status": 200,
+                                          "wall_seconds": round(time.monotonic() - read_started, 3)})
+                            health(client)
+
+                    phase("capture_and_restore_test_review_evidence_" + model)
+                    review_started = time.monotonic()
+
+                    review_time = report["fixture"]["partition_periods"]["test"]["start_time"]
+
+                    review = expect(client.post("/api/v1/reviews", json={
+                        "dataset_id": dataset_id, "channel": FEATURES[0],
+                        "start_time": review_time, "end_time": review_time,
+                        "judgment": "needs_check", "conclusion": "Disposable capacity evidence check.",
+                        "model_result": {"run_id": run_id, "model_key": model, "split": "test"},
+                    }, timeout=90), 201, model + " review evidence capture").json()
+
+                    captured = review["evidence"]["model_result"]
+
+                    if (captured["split"] != "test" or captured["model_key"] != model
+                            or captured["metrics_scope"] != "full_partition"
+                            or captured["partition_metrics"] != metrics
+                            or captured["partition"]["row_count"] != 44_064
+                            or captured["feature_columns"] != FEATURES
+                            or captured["input_sha256"] != uploaded["dataset"]["sha256"]):
+                        raise RuntimeError("Review evidence differs from evaluated Test model")
+                    completed = expect(client.post(f"/api/v1/reviews/{review['id']}/complete",
+                        json={"revision": review["revision"]}, timeout=90),
+                        200, model + " review completion").json()
+
+                    restored = expect(client.get(f"/api/v1/reviews/{review['id']}"),
+                                      200, model + " saved review").json()
+
+                    if (completed["status"] != "completed" or restored != completed
+                            or completed["evidence"] != review["evidence"]):
+                        raise RuntimeError("Saved Test review evidence changed on completion or read")
+                    training["test_review_evidence"] = {
+                        "create_http_status": 201, "complete_http_status": 200, "read_http_status": 200,
+                        "metrics_scope": captured["metrics_scope"], "sample_count": 44_064,
+                        "unchanged_after_completion_and_read": True,
+                        "wall_seconds": round(time.monotonic() - review_started, 3),
+                    }
+                    health(client)
+
+                phase("full_range_dataset_label_intervals")
+                label_intervals = []
+
+                report["dataset_label_intervals"] = label_intervals
+                for code in (0, 1):
+                    label_started = time.monotonic()
+
+                    intervals = expect(client.get(f"/api/v1/datasets/{dataset_id}/label-intervals",
+                        params={"code": code, "limit": 500}, timeout=90),
+                        200, "full-range dataset label intervals").json()
+
+                    expected_rows = sum(period["normal_rows" if code == 0 else "abnormal_rows"]
+                                        for period in report["fixture"]["partition_periods"].values())
+
+                    if (intervals["total"] != len(intervals["items"])
+                            or sum(item["row_count"] for item in intervals["items"]) != expected_rows):
+                        raise RuntimeError("Full-range CSV label intervals lost source rows")
+                    label_intervals.append({"code": code, "http_status": 200,
+                                            "total": intervals["total"], "matched_rows": expected_rows,
+                                            "wall_seconds": round(time.monotonic() - label_started, 3)})
+                    health(client)
+
                 phase("five_concurrent_logins")
                 logins = concurrent_requests(client, lambda index: login(accounts[index]))
                 report["concurrent_login_http_statuses"] = [item[0] for item in logins]
@@ -311,7 +474,9 @@ def main() -> int:
                 phase("five_concurrent_full_range_graphs")
                 report["graph_scope"] = "Five requests using one disposable dataset owner, not cross-user sharing; all 220320 rows, first 8 channels, max_points=2000."
                 report["concurrent_graphs"] = concurrent_requests(client, graph)
-                if any(item["http_status"] != 200 or item.get("matched_count") != SOURCE_ROWS for item in report["concurrent_graphs"]):
+                if any(item["http_status"] != 200 or item.get("matched_count") != SOURCE_ROWS
+                       or not (0 < item.get("returned_count", 0) <= 2000)
+                       for item in report["concurrent_graphs"]):
                     raise RuntimeError("One or more graph requests failed (including any 503); no successful substitute used")
                 phase("final_health")
                 health(client)

@@ -127,7 +127,7 @@ const OPTION_FIELDS: Record<
 };
 
 function metric(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? '계산 불가' : value.toFixed(3);
+  return value == null || !Number.isFinite(value) ? '평가 근거 부족' : value.toFixed(3);
 }
 
 function progressMessage(message: string, isExpert: boolean): string {
@@ -276,24 +276,151 @@ export function learningScore(metrics: EvaluationMetrics): number | null {
     : Math.round(metrics.f1 * 1000) / 10;
 }
 
+type ResultMetricKey = 'recall' | 'precision' | 'f1' | 'accuracy' | 'roc_auc' | 'average_precision';
+
+/** 계산되지 않은 지표는 0으로 바꾸지 않고, 해당 지표에 필요한 기록을 설명한다. */
+function unavailableMetricReason(key: ResultMetricKey, metrics: EvaluationMetrics): string {
+  if (metrics[key] != null && Number.isFinite(metrics[key])) return '';
+
+  const actualNormal =
+    (metrics.confusion_matrix[0]?.[0] ?? 0) + (metrics.confusion_matrix[0]?.[1] ?? 0);
+
+  const actualAbnormal =
+    (metrics.confusion_matrix[1]?.[0] ?? 0) + (metrics.confusion_matrix[1]?.[1] ?? 0);
+
+  const predictedAbnormal =
+    (metrics.confusion_matrix[0]?.[1] ?? 0) + (metrics.confusion_matrix[1]?.[1] ?? 0);
+
+  if (key === 'recall' && actualAbnormal === 0)
+    return '실제 이상이 0행이라 이상을 얼마나 찾았는지 계산할 수 없어요.';
+  if (key === 'precision' && predictedAbnormal === 0)
+    return '이상으로 예측한 행이 0행이라 그중 실제 이상인 비율을 계산할 수 없어요.';
+  if (key === 'f1' && actualAbnormal === 0 && predictedAbnormal === 0)
+    return '실제 이상과 예측 이상이 모두 0행이라 이상 탐지 F1을 계산할 수 없어요.';
+  if (key === 'roc_auc' && (actualNormal === 0 || actualAbnormal === 0))
+    return '실제 정상과 이상이 모두 있어야 구분 성능을 계산할 수 있어요.';
+  if (key === 'average_precision' && actualAbnormal === 0)
+    return '실제 이상이 0행이라 이상 점수의 순위를 평가할 수 없어요.';
+  return '이 실행에 저장된 결과로는 계산할 수 없어요. 0점으로 바꾸지 않아요.';
+}
+
+function EvaluationOutcome({
+  metrics,
+  partition,
+}: {
+  metrics: EvaluationMetrics;
+  partition: 'Valid' | 'Test';
+}) {
+  const correctNormal = metrics.confusion_matrix[0]?.[0] ?? 0;
+
+  const correctAbnormal = metrics.confusion_matrix[1]?.[1] ?? 0;
+
+  const correctCount = correctNormal + correctAbnormal;
+
+  const actualAbnormal = (metrics.confusion_matrix[1]?.[0] ?? 0) + correctAbnormal;
+
+  const allCorrect = metrics.sample_count > 0 && correctCount === metrics.sample_count;
+
+  const accuracyPercent = Number.isFinite(metrics.accuracy)
+    ? (metrics.accuracy * 100).toLocaleString('ko-KR', { maximumFractionDigits: 4 })
+    : null;
+
+  return (
+    <div className="training-evaluation-outcome" aria-label="정답률 요약">
+      <strong>
+        {allCorrect
+          ? `${number(metrics.sample_count)}건 모두 정답`
+          : `${number(metrics.sample_count)}건 중 ${number(correctCount)}건 정답`}
+        {accuracyPercent !== null && ` · 정확도 ${accuracyPercent}%`}
+      </strong>
+      <p>
+        정상을 정상으로 {number(correctNormal)}건, 이상을 이상으로 {number(correctAbnormal)}건
+        맞혔어요.
+      </p>
+      {actualAbnormal === 0 && (
+        <p>
+          이번 {partition}는 전부 정상 데이터라{' '}
+          {allCorrect ? '정상 판별은 모두 맞았어요.' : '위 정확도는 정상 기록을 맞힌 비율이에요.'}{' '}
+          이상을 얼마나 잘 잡는지는 이 결과만으로 평가할 수 없어요.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function EvaluationExplanation({
+  metrics,
+  partition,
+  dataset,
+}: {
+  metrics: EvaluationMetrics;
+  partition: 'Valid' | 'Test';
+  dataset: DatasetDetail | null;
+}) {
+  const actualNormal =
+    (metrics.confusion_matrix[0]?.[0] ?? 0) + (metrics.confusion_matrix[0]?.[1] ?? 0);
+
+  const actualAbnormal =
+    (metrics.confusion_matrix[1]?.[0] ?? 0) + (metrics.confusion_matrix[1]?.[1] ?? 0);
+
+  const predictedAbnormal =
+    (metrics.confusion_matrix[0]?.[1] ?? 0) + (metrics.confusion_matrix[1]?.[1] ?? 0);
+
+  const cannotEvaluateAbnormal = actualAbnormal === 0 || actualNormal === 0;
+
+  return (
+    <div className="training-evaluation-explanation" aria-label="평가 결과 해석">
+      <p>
+        {partition} {number(metrics.sample_count)}행 · 실제 정상 {number(actualNormal)}행 · 실제
+        이상 {number(actualAbnormal)}행 · 예측 이상 {number(predictedAbnormal)}행
+      </p>
+      {actualNormal === 0 && actualAbnormal > 0 && (
+        <Notice tone="warning">
+          이 평가 구간에는 실제 정상이 없어요. 정상과 이상을 구분하는 성능을 충분히 확인할 수
+          없어요.
+        </Notice>
+      )}
+      {dataset && (
+        <p>
+          전체 데이터셋 {dataset.dataset.filename}: Normal{' '}
+          {number(dataset.inspection.label_counts[dataset.dataset.normal_label] ?? 0)}행 · Abnormal{' '}
+          {number(dataset.inspection.label_counts[dataset.dataset.abnormal_label] ?? 0)}행. 전체에
+          이상이 있어도 시간순으로 나눈 평가 구간에는 없을 수 있어요.
+        </p>
+      )}
+      {cannotEvaluateAbnormal && (
+        <p>
+          <a href="#training-settings">분할 설정 다시 보기</a>에서 각 구간의 라벨 분포와 이상 발생
+          시각을 확인한 뒤 새 학습 실행을 만드세요. 비율만 바꾼다고 평가 근거가 생기지는 않아요.
+          시간 순서를 유지하고 새 Test 구간은 마지막 확인용으로 남겨두세요. 기존 실행의 평가값은
+          그대로 유지돼요.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ResultMetrics({
   metrics,
   partition,
   isExpert,
+  dataset,
 }: {
   metrics: EvaluationMetrics;
   partition: 'Valid' | 'Test';
   isExpert: boolean;
+  dataset: DatasetDetail | null;
 }) {
   const score = learningScore(metrics);
 
   if (!isExpert)
     return (
-      <div className="training-score">
+      <div className={`training-score${score == null ? ' training-score-unavailable' : ''}`}>
+        <EvaluationOutcome metrics={metrics} partition={partition} />
         <span>{partition === 'Test' ? '최종 확인 결과' : '중간 확인 결과'}</span>
         <strong>
           {score == null ? (
-            '계산할 수 없어요'
+            '평가 근거가 부족해요'
           ) : (
             <>
               {score}
@@ -312,6 +439,7 @@ function ResultMetrics({
             반영해요. 확인한 자료는 {number(metrics.sample_count)}행이에요.
           </p>
         </details>
+        <EvaluationExplanation metrics={metrics} partition={partition} dataset={dataset} />
         {metrics.warnings.map((warning, index) => (
           <Notice key={index} tone="warning">
             {warning}
@@ -321,6 +449,7 @@ function ResultMetrics({
     );
   return (
     <div className="training-expert-metrics">
+      <EvaluationOutcome metrics={metrics} partition={partition} />
       <div className="section-heading">
         <h3>{partition} · 이상 클래스 평가</h3>
         <Badge>{number(metrics.sample_count)}행</Badge>
@@ -342,25 +471,29 @@ function ResultMetrics({
                 }
               </span>
               <strong>{metric(metrics[key])}</strong>
+              {unavailableMetricReason(key, metrics) && (
+                <p className="dm-caption">{unavailableMetricReason(key, metrics)}</p>
+              )}
             </div>
           ),
         )}
       </div>
       <div className="dm-matrix-heading">
         <strong>혼동행렬</strong>
-        <span>행: 실제 / 열: 예측 · Normal, UnNormal 순서</span>
+        <span>행: 실제 / 열: 예측 · Normal, Abnormal 순서</span>
       </div>
       <div className="dm-matrix">
         <span />
         <span>Normal</span>
-        <span>UnNormal</span>
+        <span>Abnormal</span>
         <span>Normal</span>
         <strong>{number(metrics.confusion_matrix[0]?.[0] ?? 0)}</strong>
         <strong>{number(metrics.confusion_matrix[0]?.[1] ?? 0)}</strong>
-        <span>UnNormal</span>
+        <span>Abnormal</span>
         <strong>{number(metrics.confusion_matrix[1]?.[0] ?? 0)}</strong>
         <strong>{number(metrics.confusion_matrix[1]?.[1] ?? 0)}</strong>
       </div>
+      <EvaluationExplanation metrics={metrics} partition={partition} dataset={dataset} />
       {metrics.warnings.map((warning, index) => (
         <Notice key={index} tone="warning">
           {warning}
@@ -424,6 +557,8 @@ export default function ModelsPage() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
 
   const [results, setResults] = useState<RunResults | null>(null);
+
+  const [resultDataset, setResultDataset] = useState<DatasetDetail | null>(null);
 
   const [evaluation, setEvaluation] = useState<EvaluationResponse | null>(null);
 
@@ -550,6 +685,7 @@ export default function ModelsPage() {
 
     setDetail(null);
     setResults(null);
+    setResultDataset(null);
     setEvaluation(null);
     setRunError('');
     setViewModel('');
@@ -575,13 +711,19 @@ export default function ModelsPage() {
             (next.configuration.models.length === 1 ? next.configuration.models[0] : ''),
         );
         if (next.run.status === 'completed') {
-          const nextResults =
+          // 평가한 실행의 CSV만 읽는다. 위 학습 폼에서 고른 다른 CSV와 섞지 않는다.
+          const [nextResults, nextDataset] = await Promise.all([
             mode === 'demo'
-              ? structuredClone(DEMO_RESULTS)
-              : await api.results(id, 'f1', controller.signal);
+              ? Promise.resolve(structuredClone(DEMO_RESULTS))
+              : api.results(id, 'f1', controller.signal),
+            mode === 'demo'
+              ? Promise.resolve(structuredClone(DEMO_DATASET_DETAIL))
+              : api.dataset(next.run.dataset_id, controller.signal).catch(() => null),
+          ]);
 
           if (controller.signal.aborted) return;
           setResults(nextResults);
+          setResultDataset(nextDataset);
           if (next.run.evaluation_status !== 'not_started' && mode !== 'demo') {
             const nextEvaluation = await api.evaluation(id, controller.signal);
 
@@ -780,7 +922,7 @@ export default function ModelsPage() {
       setDetail(next);
       toast(
         ['xgboost', 'autoencoder'].includes(viewModel)
-          ? '사용할 모델을 저장했어요. 최종 평가를 마친 뒤 모니터링에서 사용할 수 있어요.'
+          ? '사용할 모델을 저장했어요. 최종 평가를 마친 뒤 시뮬레이션에서 사용할 수 있어요.'
           : '이전 실행에서 사용할 모델을 저장했어요.',
         'success',
       );
@@ -840,7 +982,7 @@ export default function ModelsPage() {
     (['queued', 'running'].includes(detail.run.status) ||
       ['queued', 'running'].includes(detail.run.evaluation_status));
 
-  const canMonitor =
+  const canSimulate =
     detail?.run.evaluation_status === 'completed' &&
     ['xgboost', 'autoencoder'].includes(detail.run.selected_model || '');
 
@@ -862,7 +1004,7 @@ export default function ModelsPage() {
       {mode === 'demo' && (
         <Notice>화면 미리보기예요. 학습과 자동 설정은 로그인 후 사용할 수 있어요.</Notice>
       )}
-      <form className="surface training-builder" onSubmit={startTraining}>
+      <form id="training-settings" className="surface training-builder" onSubmit={startTraining}>
         <section className="training-step">
           <div className="training-step-heading">
             <span>01</span>
@@ -976,7 +1118,7 @@ export default function ModelsPage() {
                 <p>
                   {key === 'xgboost'
                     ? isExpert
-                      ? 'Normal·UnNormal 라벨을 학습하는 지도 분류 모델'
+                      ? 'Normal·Abnormal 라벨을 학습하는 지도 분류 모델'
                       : '과거에 정상·이상으로 기록된 사례를 배워요.'
                     : isExpert
                       ? '정상 Train의 재구성 오차로 이상을 찾는 모델'
@@ -1113,7 +1255,7 @@ export default function ModelsPage() {
                   <tr>
                     <th scope="col">구간</th>
                     <th scope="col">{isExpert ? 'Normal' : '정상 기록'}</th>
-                    <th scope="col">{isExpert ? 'UnNormal' : '이상 기록'}</th>
+                    <th scope="col">{isExpert ? 'Abnormal' : '이상 기록'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1132,6 +1274,14 @@ export default function ModelsPage() {
               </table>
             </div>
           )}
+          {plan?.label_counts &&
+            (plan.label_counts.validation.abnormal === 0 ||
+              plan.label_counts.test.abnormal === 0) && (
+              <Notice tone="warning">
+                이상이 0행인 평가 구간에서는 이상 탐지 성능을 확인할 수 없어요. 비율만 바꾸기보다 각
+                구간의 라벨 분포와 이상 발생 시각을 확인하세요. 데이터는 시간순으로 유지해요.
+              </Notice>
+            )}
           {planWarnings.map((warning, index) => (
             <Notice key={index} tone="warning">
               {isExpert
@@ -1299,7 +1449,7 @@ export default function ModelsPage() {
             <p>
               {isExpert
                 ? 'Valid 확인 후 Test를 평가합니다. Test 결과로 다시 조정하지 않습니다.'
-                : '학습 결과와 최종 확인을 마친 뒤 모니터링에서 사용할 수 있어요.'}
+                : '학습 결과와 최종 확인을 마친 뒤 시뮬레이션에서 사용할 수 있어요.'}
             </p>
           </div>
           <button
@@ -1418,6 +1568,7 @@ export default function ModelsPage() {
                     metrics={shownMetrics}
                     partition={finalMetrics ? 'Test' : 'Valid'}
                     isExpert={isExpert}
+                    dataset={resultDataset}
                   />
                 )}
                 {!shownMetrics && !runError && <p>결과를 볼 모델을 선택해주세요.</p>}
@@ -1466,18 +1617,18 @@ export default function ModelsPage() {
                   >
                     {isExpert ? 'Test 평가' : '마지막 데이터로 확인'}
                   </button>
-                  {canMonitor && (
-                    <Link to="/monitor" className="button ghost">
-                      실시간 모니터링 <ArrowRight size={16} />
+                  {canSimulate && (
+                    <Link to="/simulation" className="button ghost">
+                      시뮬레이션 <ArrowRight size={16} />
                     </Link>
                   )}
                 </div>
                 {detail.run.selected_model &&
-                  !canMonitor &&
+                  !canSimulate &&
                   ['xgboost', 'autoencoder'].includes(detail.run.selected_model) && (
                     <p className="dm-caption">
-                      사용할 모델이 저장됐어요. 마지막 데이터로 확인을 마치면 실시간 모니터링으로
-                      이동할 수 있어요.
+                      사용할 모델이 저장됐어요. 마지막 데이터로 확인을 마치면 시뮬레이션으로 이동할
+                      수 있어요.
                     </p>
                   )}
                 {isExpert && !detail.training_progress?.length && (

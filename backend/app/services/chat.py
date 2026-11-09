@@ -6,6 +6,7 @@ import time
 from uuid import uuid4
 
 import httpx
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -20,7 +21,7 @@ _PRICE = re.compile(
 )
 
 _UNSUPPORTED_CERTAINTY = re.compile(
-    r"(?:고장|파손|손상)(?:이|으로|이라고|가)?\s*(?:확정|맞습니다|입니다|났습니다|났어요|됐습니다|되었습니다)"
+    r"(?:고장|파손|손상)(?:이|으로|이라고|가)?\s*(?:확정(?:입니다|됐습니다|됐어요|되었습니다|되었어요|합니다|했습니다)|맞습니다|입니다|났습니다|났어요|됐습니다|되었습니다)"
     r"|(?:즉시|반드시|무조건).{0,24}(?:교체|수리)"
     r"|교체(?:가|는)?\s*필요(?:합니다|해요)"
     r"|(?:잔여\s*수명|남은\s*수명).{0,20}\d"
@@ -66,70 +67,76 @@ def _simulation_text(body: ChatRequest) -> str:
     )
 
 
-def _fallback_answer(body: ChatRequest, chunks: list[dict]) -> str:
-    question = body.question.strip()
+def _provider_error(response: httpx.Response) -> HTTPException:
+    """외부 오류 본문은 전달하지 않고, 사용자가 해결할 수 있는 원인만 알려준다."""
+    try:
+        payload = response.json()
 
-    if re.fullmatch(r"(?:안녕(?:하세요)?|반가워(?:요)?|hello|hi)[.!?~\s]*", question, re.I):
-        return (
-            "안녕하세요. 포석호예요. 펌프 점검, 학습 결과, 시뮬레이션 사용 방법을 물어보세요. "
-            "모델이나 비용을 고르지 않아도 대화할 수 있어요."
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+
+        message = str(error.get("message", "")).lower() if isinstance(error, dict) else ""
+    except (ValueError, TypeError):
+        message = ""
+    if response.status_code == 400 and "credit balance" in message:
+        return assistant.assistant_error(
+            503,
+            "AI_CREDIT_REQUIRED",
+            "Claude API 잔액이 부족해요. Console 조직에 이용 가능한 API 크레딧을 "
+            "연결하거나 충전한 뒤 다시 전송해주세요.",
         )
-    if any(
-        word in question.lower()
-        for word in ("시뮬레이션 시작", "시뮬레이션 켜", "csv 업로드", "사용 방법")
+    if response.status_code in {401, 403}:
+        return assistant.assistant_error(
+            503,
+            "AI_AUTH_ERROR",
+            "AI 서비스 인증에 실패했어요. 서버의 Claude API 키 설정을 확인해주세요.",
+        )
+    if response.status_code == 404 or (
+        response.status_code == 400
+        and "model" in message
+        and any(
+            term in message
+            for term in ("not found", "does not exist", "not available", "not supported")
+        )
     ):
-        return (
-            "시뮬레이션 메뉴에서 학습·최종 확인을 마친 모델을 고르세요. "
-            "그다음 CSV를 선택하고 'CSV 연결'을 누르세요. "
-            "검사가 끝나면 '실시간 시뮬레이션 시작'을 누를 수 있어요. "
-            "그래프 표시를 켜면 도착한 채널값을 함께 볼 수 있어요. 비용 입력은 필요하지 않아요."
+        return assistant.assistant_error(
+            503,
+            "AI_MODEL_UNAVAILABLE",
+            "설정한 AI 모델을 사용할 수 없어요. 모델 이름과 계정 이용 권한을 확인해주세요.",
         )
-    if any(word in question.lower() for word in ("입력 확인", "학습 안", "학습이 안", "학습 시작")):
-        return (
-            "'입력 확인'은 CSV 검사에 학습을 막는 항목이 있다는 뜻이에요. "
-            "학습 화면의 열 이름·문제 개수·설명을 먼저 확인하세요. "
-            "문제가 되는 열 이름이나 검사 메시지를 보내주면 다음 확인 순서를 함께 정리할게요."
+    if response.status_code in {429, 503, 529}:
+        return assistant.assistant_error(
+            503, "AI_BUSY", "AI 요청이 몰려 있어요. 잠시 후 다시 전송해주세요."
         )
-    # 재생 현황 질문에는 일반 문헌 대신 아래에 붙는 최신 상태·행 수를 안내한다.
-    if body.simulation_context is not None and re.search(
-        r"상태|몇\s*행|진행|어디까지|수신|신호.*(?:몇|얼마)|(?:몇|얼마).*신호", question
-    ):
-        return "현재 화면에서 전달된 재생 상태를 기준으로 확인할게요. 비용 입력은 필요하지 않아요."
-    paragraphs = []
+    return assistant.assistant_error(
+        502, "AI_UNAVAILABLE", "AI 서비스 요청을 완료하지 못했어요. 잠시 후 다시 전송해주세요."
+    )
 
-    if body.history:
-        previous = next(
-            (turn.content for turn in reversed(body.history) if turn.role == "user"), ""
-        )
 
-        if previous:
-            paragraphs.append(f"앞서 물어본 '{previous[:160]}' 내용과 이어서 확인할게요.")
-    if body.model_key:
-        paragraphs.append(
-            "선택한 모델의 판정은 점검할 단서예요. "
-            "실제 고장 부위나 교체 필요를 확정한 결과는 아니에요."
-        )
-    paragraphs.extend(f"{chunk['summary']} [{chunk['id']}]" for chunk in chunks[:2])
-    checks = list(dict.fromkeys(check for chunk in chunks for check in chunk["checks"]))[:3]
-
-    if checks:
-        paragraphs.append(
-            "먼저 확인할 내용\n"
-            + "\n".join(f"{index}. {check}" for index, check in enumerate(checks, 1))
-        )
-    paragraphs.append("직접 본 증상이나 궁금한 부분을 더 적어주면 그 내용부터 이어서 확인할게요.")
-    return "\n\n".join(paragraphs)
+def _invalid_answer() -> HTTPException:
+    return assistant.assistant_error(
+        502, "AI_INVALID_RESPONSE", "AI 답변을 확인하지 못했어요. 질문을 다시 전송해주세요."
+    )
 
 
 def _llm_answer(
     settings: Settings, body: ChatRequest, facts: dict, citations: list[Citation]
-) -> str | None:
+) -> str:
     secret = settings.anthropic_api_key
 
     if not secret or not settings.anthropic_model:
-        return None
+        raise assistant.assistant_error(
+            503,
+            "AI_NOT_CONFIGURED",
+            "AI 연결이 설정되지 않았어요. 서버의 Claude API 키와 모델 설정을 확인해주세요.",
+        )
     api_key = secret.get_secret_value()
 
+    if not api_key.strip():
+        raise assistant.assistant_error(
+            503,
+            "AI_NOT_CONFIGURED",
+            "AI 연결이 설정되지 않았어요. 서버의 Claude API 키와 모델 설정을 확인해주세요.",
+        )
     messages = [
         {
             "role": "user",
@@ -188,7 +195,7 @@ def _llm_answer(
         result = json.loads(text)
 
         if not isinstance(result, dict) or set(result) != {"answer", "citation_ids"}:
-            return None
+            raise _invalid_answer()
         answer = result["answer"]
 
         ids = result["citation_ids"]
@@ -210,11 +217,22 @@ def _llm_answer(
             or _UNSUPPORTED_CERTAINTY.search(answer)
             or api_key in answer
         ):
-            return None
+            raise _invalid_answer()
         return answer.strip()
-    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
-        # 금액 누락·잔액 부족·연결 실패에도 대화를 막거나 외부 AI 성공으로 표시하지 않는다.
-        return None
+    except httpx.HTTPStatusError as error:
+        raise _provider_error(error.response) from None
+    except httpx.TimeoutException:
+        raise assistant.assistant_error(
+            504,
+            "AI_UNAVAILABLE",
+            "AI 응답을 기다리는 시간이 길어졌어요. 잠시 후 다시 전송해주세요.",
+        ) from None
+    except httpx.RequestError:
+        raise assistant.assistant_error(
+            503, "AI_UNAVAILABLE", "AI 서비스에 연결하지 못했어요. 잠시 후 다시 전송해주세요."
+        ) from None
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise _invalid_answer() from None
 
 
 def create_chat(
@@ -249,9 +267,7 @@ def create_chat(
         "sources": [citation.model_dump() for citation in citations],
     }
 
-    generated = _llm_answer(settings, body, facts, citations)
-
-    answer = generated or _fallback_answer(body, chunks)
+    answer = _llm_answer(settings, body, facts, citations)
 
     additions = [text for text in (_simulation_text(body), _cost_text(cost)) if text]
 
@@ -266,13 +282,11 @@ def create_chat(
         "현재 부품의 고장 확률이나 잔여수명이 아니에요.",
     ]
 
-    if generated is None:
-        limitations.append("외부 AI 답변을 사용하지 않고 문헌 검색·앱 사용 안내로 답했어요.")
     response = ChatResponse(
         message_id=message_id,
         created_at=int(time.time()),
         answer=answer,
-        source_mode="llm" if generated is not None else "retrieval",
+        source_mode="llm",
         citations=citations,
         limitations=limitations,
         cost=cost,

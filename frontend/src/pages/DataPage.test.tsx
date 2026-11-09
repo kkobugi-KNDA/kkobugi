@@ -68,7 +68,7 @@ describe('CSV 등록과 검사 결과', () => {
     await user.type(within(modal).getByLabelText('시각 열'), 'measured_at');
     await user.clear(within(modal).getByLabelText('라벨 열'));
     await user.type(within(modal).getByLabelText('라벨 열'), 'LABEL');
-    await user.click(within(modal).getByRole('button', { name: 'Normal=0 / UnNormal=1 적용' }));
+    await user.click(within(modal).getByRole('button', { name: 'Normal=0 / Abnormal=1 적용' }));
     expect(mocks.api.upload).not.toHaveBeenCalled();
     await user.click(within(modal).getByRole('button', { name: '등록하고 검사' }));
     await waitFor(() => expect(mocks.api.upload).toHaveBeenCalledTimes(1));

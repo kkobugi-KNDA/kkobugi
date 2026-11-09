@@ -514,20 +514,20 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
 
     mount();
     await screen.findByText('중간 확인 결과');
-    expect(screen.queryByRole('link', { name: '실시간 모니터링' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '시뮬레이션' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '사용할 모델 저장' }));
     await screen.findByText(/사용할 모델이 저장됐어요/);
     expect(app.toast).toHaveBeenCalledWith(
-      '사용할 모델을 저장했어요. 최종 평가를 마친 뒤 모니터링에서 사용할 수 있어요.',
+      '사용할 모델을 저장했어요. 최종 평가를 마친 뒤 시뮬레이션에서 사용할 수 있어요.',
       'success',
     );
-    expect(screen.queryByRole('link', { name: '실시간 모니터링' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '시뮬레이션' })).not.toBeInTheDocument();
     expect(mocks.api.evaluate).not.toHaveBeenCalled();
     run = { ...run, run: { ...run.run, evaluation_status: 'completed' } };
     await user.click(screen.getByRole('button', { name: '학습 결과 새로고침' }));
-    expect(await screen.findByRole('link', { name: '실시간 모니터링' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: '시뮬레이션' })).toHaveAttribute(
       'href',
-      '/monitor',
+      '/simulation',
     );
   });
 
@@ -606,9 +606,81 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
     mocks.api.run.mockResolvedValue(run);
     mocks.api.results.mockResolvedValue(results);
     mount();
-    expect(await screen.findByText('계산할 수 없어요')).toBeInTheDocument();
+    expect(await screen.findByText('평가 근거가 부족해요')).toBeInTheDocument();
     expect(screen.queryByText('/ 100점')).not.toBeInTheDocument();
   });
+
+  it.each(['pro', 'pro-plus'])(
+    '%s는 정상 33,048행을 모두 맞혔다는 사실과 이상 탐지 평가의 한계를 함께 보여준다',
+    async (expertise) => {
+      localStorage.setItem('kkobugi:expertise', expertise);
+      const run = structuredClone(DEMO_RUN_DETAIL);
+
+      const sourceDataset = structuredClone(DEMO_DATASET_DETAIL);
+
+      const evaluated = structuredClone(DEMO_EVALUATION);
+
+      sourceDataset.dataset.id = 'actual-training-csv';
+      sourceDataset.dataset.filename = 'pump-source.csv';
+      sourceDataset.inspection.label_counts = { '0': 205836, '1': 14484 };
+      run.run.dataset_id = sourceDataset.dataset.id;
+      run.run.selected_model = 'xgboost';
+      run.run.evaluation_status = 'completed';
+      run.configuration.models = ['xgboost'];
+      evaluated.metrics = {
+        ...evaluated.metrics!,
+        accuracy: 1,
+        precision: null,
+        recall: null,
+        f1: null,
+        balanced_accuracy: null,
+        roc_auc: null,
+        average_precision: null,
+        confusion_matrix: [
+          [33048, 0],
+          [0, 0],
+        ],
+        sample_count: 33048,
+        warnings: [],
+      };
+      mocks.useApp.mockReturnValue(context(run.run.id));
+      mocks.api.run.mockResolvedValue(run);
+      mocks.api.evaluation.mockResolvedValue(evaluated);
+      mocks.api.dataset.mockImplementation(async (id) =>
+        structuredClone(id === sourceDataset.dataset.id ? sourceDataset : DEMO_DATASET_DETAIL),
+      );
+      mount();
+      expect(await screen.findByText('33,048건 모두 정답 · 정확도 100%')).toBeInTheDocument();
+      expect(screen.getByText(/정상 판별은 모두 맞았어요/)).toHaveTextContent(
+        '이상을 얼마나 잘 잡는지는 이 결과만으로 평가할 수 없어요.',
+      );
+      const explanation = screen.getByLabelText('평가 결과 해석');
+
+      expect(explanation).toHaveTextContent(
+        'Test 33,048행 · 실제 정상 33,048행 · 실제 이상 0행 · 예측 이상 0행',
+      );
+      expect(explanation).toHaveTextContent(
+        '전체 데이터셋 pump-source.csv: Normal 205,836행 · Abnormal 14,484행',
+      );
+      expect(explanation).not.toHaveTextContent('322행');
+      expect(screen.getByRole('link', { name: '분할 설정 다시 보기' })).toHaveAttribute(
+        'href',
+        '#training-settings',
+      );
+      if (expertise === 'pro-plus') {
+        expect(screen.getByText('1.000')).toBeInTheDocument();
+        expect(screen.getAllByText('평가 근거 부족')).toHaveLength(5);
+        expect(screen.getByText(/실제 이상이 0행이라 이상을 얼마나 찾았는지/)).toBeInTheDocument();
+        expect(screen.getByText(/이상으로 예측한 행이 0행이라/)).toBeInTheDocument();
+        expect(screen.getByText(/실제 정상과 이상이 모두 있어야/)).toBeInTheDocument();
+      } else {
+        expect(screen.getByText('평가 근거가 부족해요')).toBeInTheDocument();
+        expect(screen.queryByText('/ 100점')).not.toBeInTheDocument();
+      }
+      expect(mocks.api.createRun).not.toHaveBeenCalled();
+      expect(mocks.api.evaluate).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     {

@@ -169,7 +169,7 @@ def test_assistant_reads_owned_model_before_explanation_and_keeps_unknown_cost(r
     assert message["source_mode"] == "retrieval"
     assert message["model_snapshot"]["metrics_scope"] == "full_partition"
     assert message["model_snapshot"]["metrics"]["sample_count"] == 15
-    assert message["model_snapshot"]["score_formula"] == "UnNormal F1 × 100"
+    assert message["model_snapshot"]["score_formula"] == "Abnormal F1 × 100"
     assert (
         message["model_snapshot"]["score_100"] == message["model_snapshot"]["metrics"]["f1"] * 100
     )

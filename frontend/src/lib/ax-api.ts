@@ -1,4 +1,4 @@
-import { API_BASE, ApiError } from './api';
+import { API_BASE, ApiError, serverErrorMessage } from './api';
 
 // 모든 AX 화면도 기존 로그인 세션과 변경 요청 검사를 그대로 사용한다.
 export async function axRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -13,7 +13,11 @@ export async function axRequest<T>(path: string, init: RequestInit = {}): Promis
     const body = await response.json().catch(() => ({}));
 
     if (response.status === 401) window.dispatchEvent(new Event('kkobugi:unauthorized'));
-    throw new ApiError(body.error?.message || '요청을 완료하지 못했어요.', response.status);
+    throw new ApiError(
+      body.error?.message || serverErrorMessage(response.status),
+      response.status,
+      body.error?.code,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -23,7 +27,10 @@ export async function axDownload(path: string, filename: string): Promise<void> 
 
   if (!response.ok) {
     if (response.status === 401) window.dispatchEvent(new Event('kkobugi:unauthorized'));
-    throw new ApiError('파일을 내려받지 못했어요.', response.status);
+    throw new ApiError(
+      serverErrorMessage(response.status, '파일을 내려받지 못했어요.'),
+      response.status,
+    );
   }
   const downloadUrl = URL.createObjectURL(await response.blob());
 

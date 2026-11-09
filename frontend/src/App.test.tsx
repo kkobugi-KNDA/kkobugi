@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import App, { assistantDetailForPet } from './App';
 import type { AssistantOpenDetail } from './lib/assistant-events';
 const mocks = vi.hoisted(() => ({ login: vi.fn(), me: vi.fn(), logout: vi.fn() }));
@@ -11,6 +11,15 @@ vi.mock('./lib/api', () => ({
 vi.mock('./components/AssistantPet', () => ({
   default: ({ onOpen }: { onOpen: () => void }) => <button onClick={onOpen}>도우미 열기</button>,
 }));
+vi.mock('./pages/SimulationPage', () => ({
+  default: () => <h1>시뮬레이션 화면</h1>,
+}));
+
+function CurrentPath() {
+  const location = useLocation();
+
+  return <output aria-label="현재 주소">{location.pathname}</output>;
+}
 beforeEach(() => {
   sessionStorage.clear();
   localStorage.clear();
@@ -19,6 +28,20 @@ beforeEach(() => {
   mocks.login.mockReset();
 });
 describe('workspace navigation and authentication boundaries', () => {
+  it('redirects the old monitor address to simulation and keeps only one navigation item', async () => {
+    sessionStorage.setItem('kkobugi:preview', '1');
+    render(
+      <MemoryRouter initialEntries={['/monitor']}>
+        <App />
+        <CurrentPath />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: '시뮬레이션 화면' })).toBeInTheDocument();
+    expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/simulation');
+    expect(screen.getAllByRole('link', { name: '시뮬레이션' })).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: '실시간 모니터링' })).not.toBeInTheDocument();
+  });
+
   it('keeps navigation classes intact inside tooltip slots and opens the help drawer', async () => {
     sessionStorage.setItem('kkobugi:preview', '1');
     render(
