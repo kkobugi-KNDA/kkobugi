@@ -1,0 +1,98 @@
+name: Render image (512 MB)
+
+"on":
+  workflow_dispatch:
+  push:
+    branches: [namelesspark7]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-entrypoint.sh
+      - render.yaml
+      - backend/**
+      - frontend/**
+      - .github/workflows/render-image.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.ref == 'refs/heads/namelesspark7'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      IMAGE_TAG: kkobugi-render-ci:${{ github.sha }}
+      CONTAINER_NAME: kkobugi-render-smoke
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build --pull --progress=plain --tag "$IMAGE_TAG" .
+
+      - name: Start with 512 MB and no extra swap
+        run: |
+          docker run --detach --name "$CONTAINER_NAME" \
+            --memory=512m --memory-swap=512m \
+            --publish 127.0.0.1:10000:10000 \
+            --env PORT=10000 \
+            "$IMAGE_TAG"
+          test "$(docker inspect --format '{{.HostConfig.Memory}}' "$CONTAINER_NAME")" = 536870912
+          test "$(docker inspect --format '{{.HostConfig.MemorySwap}}' "$CONTAINER_NAME")" = 536870912
+
+      - name: Check health and routes
+        run: |
+          ready=false
+          for attempt in {1..60}; do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$CONTAINER_NAME")" != true ]; then
+              echo 'Container stopped before becoming ready.' >&2
+              exit 1
+            fi
+            status=$(curl --silent --connect-timeout 1 --max-time 2 \
+              --output /tmp/kkobugi-health.json --write-out '%{http_code}' \
+              http://127.0.0.1:10000/api/v1/health || true)
+            if [ "$status" = 200 ]; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+
+          status=$(curl --silent --show-error --max-time 5 \
+            --output /tmp/kkobugi-models.html --write-out '%{http_code}' \
+            http://127.0.0.1:10000/models)
+          test "$status" = 200
+          grep --ignore-case --quiet '<!doctype html' /tmp/kkobugi-models.html
+
+          status=$(curl --silent --show-error --max-time 5 \
+            --output /tmp/kkobugi-missing-api.json --write-out '%{http_code}' \
+            http://127.0.0.1:10000/api/v1/does-not-exist)
+          test "$status" = 404
+          test "$(docker inspect --format '{{.State.OOMKilled}}' "$CONTAINER_NAME")" = false
+
+      - name: Container logs and memory
+        if: always()
+        run: |
+          if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+            docker logs --tail 200 "$CONTAINER_NAME"
+            docker inspect --format 'running={{.State.Running}} oomKilled={{.State.OOMKilled}} exitCode={{.State.ExitCode}}' "$CONTAINER_NAME"
+            docker stats --no-stream --format 'memory={{.MemUsage}}' "$CONTAINER_NAME" || true
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm --force "$CONTAINER_NAME" >/dev/null 2>&1 || true
+          docker image rm "$IMAGE_TAG" >/dev/null 2>&1 || true
