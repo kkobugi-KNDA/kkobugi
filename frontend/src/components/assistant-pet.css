@@ -5,6 +5,13 @@
   height: 122px;
   opacity: 0;
   pointer-events: none;
+  transition:
+    left 560ms cubic-bezier(0.22, 0.68, 0.26, 1),
+    top 560ms cubic-bezier(0.22, 0.68, 0.26, 1);
+}
+.assistant-pet--dragging,
+.assistant-pet[data-reduced-motion='true'] {
+  transition: none;
 }
 .assistant-pet--placed {
   opacity: 1;
@@ -85,6 +92,10 @@
 .assistant-pet--dragging .assistant-pet-tooltip {
   opacity: 0 !important;
 }
+.assistant-pet[data-guide-id] .assistant-pet-tooltip {
+  /* 안내 말풍선이 이미 있으므로 작은 화면의 질문 버튼 위에 툴팁을 겹치지 않는다. */
+  display: none;
+}
 .assistant-pet-fallback {
   display: grid;
   place-items: center;
@@ -104,6 +115,9 @@
     0 12px 25px rgb(41 75 117 / 7%);
 }
 @media (prefers-reduced-motion: reduce) {
+  .assistant-pet {
+    transition: none;
+  }
   .assistant-pet-tooltip {
     transition: none;
   }

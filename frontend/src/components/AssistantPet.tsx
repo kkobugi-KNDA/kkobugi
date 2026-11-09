@@ -6,6 +6,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { MessageCircle, X } from 'lucide-react';
+import { openPetAssistant } from '../lib/assistant-events';
+import {
+  ASSISTANT_GUIDANCE_EVENT,
+  findVisibleAssistantGuide,
+  type AssistantGuideRegistration,
+} from '../lib/assistant-guidance';
 import './assistant-pet.css';
 
 type Animation = { row: number; frameCount: number; durationsMs: number[]; label: string };
@@ -25,6 +31,8 @@ const WIDTH = 112;
 const HEIGHT = 122;
 const MARGIN = 18;
 const ASSETS = '/assets/pet/';
+
+export const MANUAL_DOCK_PAUSE_MS = 20000;
 
 function isAtlas(value: unknown): value is Atlas {
   if (!value || typeof value !== 'object') return false;
@@ -78,8 +86,30 @@ export default function AssistantPet({
   const [transient, setTransient] = useState<string | null>(null);
   const [dragDirection, setDragDirection] = useState<string | null>(null);
   const [frame, setFrame] = useState(0);
+
+  const [dockedGuide, setDockedGuide] = useState<AssistantGuideRegistration | null>(null);
+
+  const [travelDirection, setTravelDirection] = useState<string | null>(null);
+
   const gesture = useRef<Gesture | null>(null);
+
   const suppressClick = useRef(false);
+
+  const homePosition = useRef<Point>({ x: 0, y: 0 });
+
+  const manualDockPausedUntil = useRef(0);
+
+  const resumeDockingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const travelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleDocking = useRef<() => void>(() => {});
+
+  const currentPosition = useRef(position);
+
+  const motionIsReduced = useRef(false);
+
+  currentPosition.current = position;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -121,7 +151,10 @@ export default function AssistantPet({
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReducedMotion(query.matches);
+    const update = () => {
+      motionIsReduced.current = query.matches;
+      setReducedMotion(query.matches);
+    };
     update();
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
@@ -129,17 +162,77 @@ export default function AssistantPet({
 
   useEffect(() => {
     const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
+
     const size = viewport();
-    setPosition(
-      clampPetPosition({ x: size.width - WIDTH - 30, y: size.height - HEIGHT - 24 }, size),
+
+    homePosition.current = clampPetPosition(
+      { x: size.width - WIDTH - 30, y: size.height - HEIGHT - 24 },
+      size,
     );
+    currentPosition.current = homePosition.current;
+    setPosition(homePosition.current);
     setPlaced(true);
-    const resize = () => setPosition((previous) => clampPetPosition(previous, viewport()));
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    let animationFrame: number | null = null;
+
+    const updateDocking = () => {
+      animationFrame = null;
+      if (gesture.current) return;
+      const currentViewport = viewport();
+
+      homePosition.current = clampPetPosition(homePosition.current, currentViewport);
+      const visibleGuide =
+        Date.now() < manualDockPausedUntil.current
+          ? null
+          : findVisibleAssistantGuide(currentViewport);
+
+      const nextPosition = visibleGuide
+        ? clampPetPosition({ x: visibleGuide.left, y: visibleGuide.top }, currentViewport)
+        : homePosition.current;
+
+      const previous = currentPosition.current;
+
+      setDockedGuide(visibleGuide?.guide || null);
+      if (previous.x === nextPosition.x && previous.y === nextPosition.y) return;
+      if (travelTimer.current) clearTimeout(travelTimer.current);
+      if (!motionIsReduced.current) {
+        setTravelDirection(nextPosition.x < previous.x ? 'running-left' : 'running-right');
+        travelTimer.current = setTimeout(() => setTravelDirection(null), 600);
+      }
+      currentPosition.current = nextPosition;
+      setPosition(nextPosition);
+    };
+
+    // 스크롤 이벤트마다 렌더링하지 않고 다음 화면 갱신에 한 번만 위치를 계산한다.
+    const schedule = () => {
+      if (animationFrame === null) animationFrame = window.requestAnimationFrame(updateDocking);
+    };
+
+    scheduleDocking.current = schedule;
+    updateDocking();
+    // 사이드바 접기나 모바일 헤더 줄바꿈은 window 크기를 바꾸지 않아도 내용 위치를 바꾼다.
+    const scrollArea = document.querySelector('.main-scroll');
+
+    const sizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+
+    if (scrollArea) sizeObserver?.observe(scrollArea);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, true);
+    window.addEventListener(ASSISTANT_GUIDANCE_EVENT, schedule);
+    return () => {
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener(ASSISTANT_GUIDANCE_EVENT, schedule);
+      sizeObserver?.disconnect();
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      if (resumeDockingTimer.current) clearTimeout(resumeDockingTimer.current);
+      if (travelTimer.current) clearTimeout(travelTimer.current);
+      scheduleDocking.current = () => {};
+    };
   }, []);
 
-  const requestedAnimation = dragDirection ?? transient ?? (working ? 'running' : 'idle');
+  const requestedAnimation =
+    dragDirection ?? travelDirection ?? transient ?? (working ? 'running' : 'idle');
   const animationName = reducedMotion && atlas ? atlas.reducedMotion.animation : requestedAnimation;
   const animation = atlas?.animations[animationName] ?? atlas?.animations.idle;
 
@@ -173,12 +266,16 @@ export default function AssistantPet({
   };
   const pointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!event.isPrimary || event.button !== 0) return;
+    const bounds = event.currentTarget.parentElement?.getBoundingClientRect();
+
+    const origin = bounds?.width ? { x: bounds.left, y: bounds.top } : position;
+
     suppressClick.current = false;
     gesture.current = {
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      origin: position,
+      origin,
       moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -191,19 +288,35 @@ export default function AssistantPet({
     if (!current.moved && Math.hypot(dx, dy) < 6) return;
     current.moved = true;
     suppressClick.current = true;
+    // 사용자가 옮긴 자리를 우선한다. 안내가 같은 화면에 있어도 바로 끌어당기지 않는다.
+    manualDockPausedUntil.current = Date.now() + MANUAL_DOCK_PAUSE_MS;
+    if (resumeDockingTimer.current) clearTimeout(resumeDockingTimer.current);
+    if (travelTimer.current) clearTimeout(travelTimer.current);
+    setDockedGuide(null);
+    setTravelDirection(null);
     setTransient(null);
     setDragDirection(dx < 0 ? 'running-left' : 'running-right');
-    setPosition(
-      clampPetPosition(
-        { x: current.origin.x + dx, y: current.origin.y + dy },
-        { width: window.innerWidth, height: window.innerHeight },
-      ),
+
+    const nextPosition = clampPetPosition(
+      { x: current.origin.x + dx, y: current.origin.y + dy },
+      { width: window.innerWidth, height: window.innerHeight },
     );
+
+    homePosition.current = nextPosition;
+    currentPosition.current = nextPosition;
+    setPosition(nextPosition);
   };
   const finishGesture = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!gesture.current || gesture.current.pointerId !== event.pointerId) return;
+    const moved = gesture.current.moved;
+
     gesture.current = null;
     setDragDirection(null);
+    if (moved)
+      resumeDockingTimer.current = setTimeout(
+        () => scheduleDocking.current(),
+        Math.max(0, manualDockPausedUntil.current - Date.now()),
+      );
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
   };
@@ -222,9 +335,11 @@ export default function AssistantPet({
   return (
     <div
       className={`assistant-pet ${dragDirection ? 'assistant-pet--dragging' : ''} ${placed ? 'assistant-pet--placed' : ''}`}
+      data-guide-id={dockedGuide?.id}
+      data-reduced-motion={reducedMotion}
       style={{ left: position.x, top: position.y }}
     >
-      {notice && (
+      {notice && !dockedGuide && (
         <div
           className="assistant-pet-message"
           role="status"
@@ -263,7 +378,9 @@ export default function AssistantPet({
             return;
           }
           setTransient('waving');
-          onOpen();
+          if (dockedGuide)
+            openPetAssistant({ ...dockedGuide.context, initialQuestion: dockedGuide.question });
+          else onOpen();
         }}
       >
         {spriteStyle ? (

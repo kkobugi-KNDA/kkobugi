@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Play, UserRound } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { errorMessage } from '../lib/api';
-import PumpScene from '../components/PumpScene';
+import LoginVideo from '../components/LoginVideo';
 import ThemeToggle from '../components/ThemeToggle';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
@@ -40,7 +40,7 @@ export default function LoginPage() {
     }
   }
   return (
-    <main className="login-page">
+    <main className="login-page login-page-with-video">
       <section className="login-main">
         <header className="login-header">
           <Brand />
@@ -137,17 +137,17 @@ export default function LoginPage() {
           <span>분석은 함께, 판단은 근거 있게.</span>
         </footer>
       </section>
-      <section className="login-visual">
+      <section className="login-visual login-video-panel">
         <div className="visual-topline">
           <span>ENGINEERED FOR CLARITY</span>
           <span>KKOBUGI / 2026</span>
         </div>
-        <PumpScene />
+        <LoginVideo />
         <div className="visual-bottom">
           <span className="visual-index">01</span>
           <div>
             <strong>복잡한 데이터, 선명한 다음 단계.</strong>
-            <p>확인하고 · 비교하고 · 기록하세요</p>
+            <p>확인하고 · 학습하고 · 기록하세요</p>
           </div>
           <div className="visual-pagination">
             <i />

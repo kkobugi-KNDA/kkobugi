@@ -125,6 +125,7 @@ function Assistant({
         selectedSignal={detail.selectedSignal}
         suggestedCostInputs={detail.suggestedCostInputs}
         contextKey={detail.contextKey}
+        initialQuestion={detail.initialQuestion}
         simulationContext={detail.simulationContext}
         getSimulationContext={getSimulationContext}
       />

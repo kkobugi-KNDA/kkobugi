@@ -11,10 +11,12 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import { Badge, EmptyState, Field, Modal, Notice, PageHeader } from '../components/ui';
+import AssistantGuide from '../components/AssistantGuide';
 import { useApp } from '../context/AppContext';
 import { useExpertise } from '../context/ExpertiseContext';
 import { DEMO_DATASET_DETAIL, DEMO_RESULTS, DEMO_RUN_DETAIL } from '../data/demo';
 import { api, errorMessage } from '../lib/api';
+import type { AssistantOpenDetail } from '../lib/assistant-events';
 import { csvTime, dateTime, number } from '../lib/format';
 import {
   prepareTraining,
@@ -304,20 +306,12 @@ function unavailableMetricReason(key: ResultMetricKey, metrics: EvaluationMetric
   return '이 실행에 저장된 결과로는 계산할 수 없어요. 0점으로 바꾸지 않아요.';
 }
 
-function EvaluationOutcome({
-  metrics,
-  partition,
-}: {
-  metrics: EvaluationMetrics;
-  partition: 'Valid' | 'Test';
-}) {
+function EvaluationOutcome({ metrics }: { metrics: EvaluationMetrics }) {
   const correctNormal = metrics.confusion_matrix[0]?.[0] ?? 0;
 
   const correctAbnormal = metrics.confusion_matrix[1]?.[1] ?? 0;
 
   const correctCount = correctNormal + correctAbnormal;
-
-  const actualAbnormal = (metrics.confusion_matrix[1]?.[0] ?? 0) + correctAbnormal;
 
   const allCorrect = metrics.sample_count > 0 && correctCount === metrics.sample_count;
 
@@ -337,13 +331,6 @@ function EvaluationOutcome({
         정상을 정상으로 {number(correctNormal)}건, 이상을 이상으로 {number(correctAbnormal)}건
         맞혔어요.
       </p>
-      {actualAbnormal === 0 && (
-        <p>
-          이번 {partition}는 전부 정상 데이터라{' '}
-          {allCorrect ? '정상 판별은 모두 맞았어요.' : '위 정확도는 정상 기록을 맞힌 비율이에요.'}{' '}
-          이상을 얼마나 잘 잡는지는 이 결과만으로 평가할 수 없어요.
-        </p>
-      )}
     </div>
   );
 }
@@ -352,10 +339,12 @@ function EvaluationExplanation({
   metrics,
   partition,
   dataset,
+  assistantContext,
 }: {
   metrics: EvaluationMetrics;
   partition: 'Valid' | 'Test';
   dataset: DatasetDetail | null;
+  assistantContext: AssistantOpenDetail;
 }) {
   const actualNormal =
     (metrics.confusion_matrix[0]?.[0] ?? 0) + (metrics.confusion_matrix[0]?.[1] ?? 0);
@@ -368,18 +357,24 @@ function EvaluationExplanation({
 
   const cannotEvaluateAbnormal = actualAbnormal === 0 || actualNormal === 0;
 
+  // 안내는 저장된 결과로 만들고, 추가 설명을 원할 때만 실제 AI 대화를 연다.
+  const allCorrect = metrics.sample_count > 0 && metrics.accuracy === 1;
+
+  const message =
+    actualAbnormal === 0
+      ? `이번 ${partition}는 전부 정상 데이터라 ${allCorrect ? '정상 판별은 모두 맞았어요.' : '위 정확도는 정상 기록을 맞힌 비율이에요.'} 이상을 얼마나 잘 잡는지는 이 결과만으로 평가할 수 없어요.`
+      : actualNormal === 0
+        ? `이번 ${partition}에는 정상 기록이 없어요. 이상 판별 결과는 확인할 수 있지만, 정상까지 잘 구분하는지는 추가 확인이 필요해요.`
+        : metrics.warnings[0] || '';
+
+  const resultFacts = `${partition} ${number(metrics.sample_count)}행 · 실제 정상 ${number(actualNormal)}행 · 실제 이상 ${number(actualAbnormal)}행 · 예측 이상 ${number(predictedAbnormal)}행`;
+
   return (
     <div className="training-evaluation-explanation" aria-label="평가 결과 해석">
       <p>
         {partition} {number(metrics.sample_count)}행 · 실제 정상 {number(actualNormal)}행 · 실제
         이상 {number(actualAbnormal)}행 · 예측 이상 {number(predictedAbnormal)}행
       </p>
-      {actualNormal === 0 && actualAbnormal > 0 && (
-        <Notice tone="warning">
-          이 평가 구간에는 실제 정상이 없어요. 정상과 이상을 구분하는 성능을 충분히 확인할 수
-          없어요.
-        </Notice>
-      )}
       {dataset && (
         <p>
           전체 데이터셋 {dataset.dataset.filename}: Normal{' '}
@@ -388,14 +383,23 @@ function EvaluationExplanation({
           이상이 있어도 시간순으로 나눈 평가 구간에는 없을 수 있어요.
         </p>
       )}
-      {cannotEvaluateAbnormal && (
-        <p>
-          <a href="#training-settings">분할 설정 다시 보기</a>에서 각 구간의 라벨 분포와 이상 발생
-          시각을 확인한 뒤 새 학습 실행을 만드세요. 비율만 바꾼다고 평가 근거가 생기지는 않아요.
-          시간 순서를 유지하고 새 Test 구간은 마지막 확인용으로 남겨두세요. 기존 실행의 평가값은
-          그대로 유지돼요.
-        </p>
+      {(cannotEvaluateAbnormal || metrics.warnings.length > 0) && (
+        <AssistantGuide
+          id="training-result-guide"
+          title="결과를 함께 읽어볼까요?"
+          message={message}
+          details={[
+            '시간 순서를 유지하고 각 구간의 라벨 분포와 이상 발생 시각을 확인하세요. 비율만 바꾼다고 평가 근거가 생기지는 않아요. 기존 실행의 평가값은 그대로 유지돼요.',
+            ...metrics.warnings,
+          ]}
+          context={{
+            ...assistantContext,
+            selectedSignal: `${dataset?.dataset.filename || '선택한 학습 기록'} / ${resultFacts}. ${message}`,
+          }}
+          question="이 평가 결과에서 확인할 수 있는 점과 다음에 확인할 점을 쉽게 설명해줘."
+        />
       )}
+      {cannotEvaluateAbnormal && <a href="#training-settings">분할 설정 다시 보기</a>}
     </div>
   );
 }
@@ -405,18 +409,20 @@ function ResultMetrics({
   partition,
   isExpert,
   dataset,
+  assistantContext,
 }: {
   metrics: EvaluationMetrics;
   partition: 'Valid' | 'Test';
   isExpert: boolean;
   dataset: DatasetDetail | null;
+  assistantContext: AssistantOpenDetail;
 }) {
   const score = learningScore(metrics);
 
   if (!isExpert)
     return (
       <div className={`training-score${score == null ? ' training-score-unavailable' : ''}`}>
-        <EvaluationOutcome metrics={metrics} partition={partition} />
+        <EvaluationOutcome metrics={metrics} />
         <span>{partition === 'Test' ? '최종 확인 결과' : '중간 확인 결과'}</span>
         <strong>
           {score == null ? (
@@ -439,17 +445,17 @@ function ResultMetrics({
             반영해요. 확인한 자료는 {number(metrics.sample_count)}행이에요.
           </p>
         </details>
-        <EvaluationExplanation metrics={metrics} partition={partition} dataset={dataset} />
-        {metrics.warnings.map((warning, index) => (
-          <Notice key={index} tone="warning">
-            {warning}
-          </Notice>
-        ))}
+        <EvaluationExplanation
+          metrics={metrics}
+          partition={partition}
+          dataset={dataset}
+          assistantContext={assistantContext}
+        />
       </div>
     );
   return (
     <div className="training-expert-metrics">
-      <EvaluationOutcome metrics={metrics} partition={partition} />
+      <EvaluationOutcome metrics={metrics} />
       <div className="section-heading">
         <h3>{partition} · 이상 클래스 평가</h3>
         <Badge>{number(metrics.sample_count)}행</Badge>
@@ -493,13 +499,72 @@ function ResultMetrics({
         <strong>{number(metrics.confusion_matrix[1]?.[0] ?? 0)}</strong>
         <strong>{number(metrics.confusion_matrix[1]?.[1] ?? 0)}</strong>
       </div>
-      <EvaluationExplanation metrics={metrics} partition={partition} dataset={dataset} />
-      {metrics.warnings.map((warning, index) => (
-        <Notice key={index} tone="warning">
-          {warning}
-        </Notice>
-      ))}
+      <EvaluationExplanation
+        metrics={metrics}
+        partition={partition}
+        dataset={dataset}
+        assistantContext={assistantContext}
+      />
     </div>
+  );
+}
+
+/** 같은 원인을 알리는 경고는 한 말풍선으로 묶고 원래 검사 내용은 펼쳐볼 수 있다. */
+function TrainingPlanGuide({
+  plan,
+  dataset,
+  isExpert,
+}: {
+  plan: TrainingPlan;
+  dataset: DatasetDetail | null;
+  isExpert: boolean;
+}) {
+  const warnings = plan.warnings ?? plan.notes.filter((note) => /라벨|비정상|F1/.test(note));
+
+  const missingParts = (['validation', 'test'] as const).filter(
+    (part) => plan.label_counts?.[part].abnormal === 0,
+  );
+
+  if (!missingParts.length && !warnings.length) return null;
+
+  const partNames = missingParts.map((part) =>
+    isExpert
+      ? { validation: 'Valid', test: 'Test' }[part]
+      : { validation: '중간 확인', test: '최종 확인' }[part],
+  );
+
+  const message = missingParts.length
+    ? `${partNames.join('·')} 구간에 이상 기록이 0행이에요. 학습은 진행할 수 있지만, 이 구간에서 이상을 잘 찾는지는 확인할 수 없어요.`
+    : progressMessage(warnings[0], isExpert);
+
+  const distribution = plan.label_counts
+    ? (['train', 'validation', 'test'] as const)
+        .map(
+          (part) =>
+            `${part}: 정상 ${plan.label_counts![part].normal}행, 이상 ${plan.label_counts![part].abnormal}행`,
+        )
+        .join(' / ')
+    : '';
+
+  return (
+    <AssistantGuide
+      id="training-split-guide"
+      title="학습 전에 함께 확인해요"
+      message={message}
+      details={[
+        '각 구간의 라벨 분포와 이상 발생 시각을 확인하세요. 비율만 바꾸기보다 시간 순서를 유지하며 평가에 필요한 기록이 있는지 살펴보세요.',
+        ...warnings.map((warning) => progressMessage(warning, isExpert)),
+      ]}
+      context={{
+        // 아직 학습하지 않은 설정이다. 아래에 표시된 과거 실행을 잘못 연결하지 않는다.
+        runId: null,
+        modelKey: null,
+        contextKey: `training-plan:${plan.configuration.dataset_id}:${plan.configuration.models.join(',')}:${plan.configuration.train_end}:${plan.configuration.validation_end}`,
+        selectedSignal: `${dataset?.dataset.filename || '선택한 CSV'} / ${plan.configuration.models.join(',')} / ${distribution}. ${message} Train 종료 ${plan.configuration.train_end}, Valid 종료 ${plan.configuration.validation_end}. 아직 실행 전의 분할 설정입니다.`,
+        simulationContext: null,
+      }}
+      question="이 데이터 분할에서 무엇을 확인해야 하는지, 시간 순서를 지키면서 설명해줘."
+    />
   );
 }
 
@@ -986,10 +1051,6 @@ export default function ModelsPage() {
     detail?.run.evaluation_status === 'completed' &&
     ['xgboost', 'autoencoder'].includes(detail.run.selected_model || '');
 
-  // 중요한 자료 부족 안내는 쉬운 설명에서도 숨기지 않는다. 과거 API의 notes도 읽는다.
-  const planWarnings =
-    plan?.warnings ?? plan?.notes.filter((note) => /라벨|비정상|F1/.test(note)) ?? [];
-
   return (
     <div className="page-stack training-page">
       <PageHeader
@@ -1274,25 +1335,7 @@ export default function ModelsPage() {
               </table>
             </div>
           )}
-          {plan?.label_counts &&
-            (plan.label_counts.validation.abnormal === 0 ||
-              plan.label_counts.test.abnormal === 0) && (
-              <Notice tone="warning">
-                이상이 0행인 평가 구간에서는 이상 탐지 성능을 확인할 수 없어요. 비율만 바꾸기보다 각
-                구간의 라벨 분포와 이상 발생 시각을 확인하세요. 데이터는 시간순으로 유지해요.
-              </Notice>
-            )}
-          {planWarnings.map((warning, index) => (
-            <Notice key={index} tone="warning">
-              {isExpert
-                ? warning
-                : warning
-                    .replace(/\bTrain\b/g, '학습')
-                    .replace(/\bValid\b/g, '중간 확인')
-                    .replace(/\bTest\b/g, '최종 확인')
-                    .replace(/\bF1\b/g, '점수')}
-            </Notice>
-          ))}
+          {plan && <TrainingPlanGuide plan={plan} dataset={dataset} isExpert={isExpert} />}
           <p className="training-period">
             시간 순서를 유지해요. 앞부분으로 배우고, 뒷부분으로 확인합니다.
           </p>
@@ -1569,6 +1612,13 @@ export default function ModelsPage() {
                     partition={finalMetrics ? 'Test' : 'Valid'}
                     isExpert={isExpert}
                     dataset={resultDataset}
+                    assistantContext={{
+                      runId: detail.run.id,
+                      modelKey: viewModel || null,
+                      split: finalMetrics ? 'test' : 'validation',
+                      contextKey: `training-result:${detail.run.id}:${viewModel}:${finalMetrics ? 'test' : 'validation'}`,
+                      simulationContext: null,
+                    }}
                   />
                 )}
                 {!shownMetrics && !runError && <p>결과를 볼 모델을 선택해주세요.</p>}

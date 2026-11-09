@@ -1,0 +1,102 @@
+.assistant-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 18px;
+  align-items: end;
+  margin: 20px 0 8px;
+  padding-right: 2px;
+}
+.assistant-guide-bubble {
+  position: relative;
+  min-width: 0;
+  padding: 18px 21px;
+  border: 1px solid var(--theme-primary-border, #c6d9e9);
+  border-radius: 17px 17px 4px 17px;
+  background: linear-gradient(
+    120deg,
+    var(--theme-primary-surface, #f0f6fc),
+    var(--theme-surface, #fff)
+  );
+  color: var(--theme-text-strong, #314f6b);
+  line-height: 1.75;
+}
+.assistant-guide-bubble::after {
+  content: '';
+  position: absolute;
+  right: -7px;
+  bottom: 34px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--theme-primary-border, #c6d9e9);
+  border-right: 1px solid var(--theme-primary-border, #c6d9e9);
+  background: var(--theme-surface, #fff);
+  transform: rotate(45deg);
+}
+.assistant-guide-speaker {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--theme-primary, #467ba7);
+  font-size: 11px;
+  font-weight: 650;
+}
+.assistant-guide .assistant-guide-bubble h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.assistant-guide-bubble p {
+  margin: 8px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.assistant-guide-details {
+  margin: 9px 0;
+  color: var(--theme-text-secondary, #617b90);
+  font-size: 12px;
+}
+.assistant-guide-details summary {
+  cursor: pointer;
+}
+.assistant-guide-details ul {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.assistant-guide-ask {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--theme-primary, #2867a0);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.assistant-guide-ask:hover {
+  text-decoration: underline;
+}
+.assistant-guide-pet-slot {
+  width: 112px;
+  height: 122px;
+  pointer-events: none;
+}
+@media (max-width: 600px) {
+  .assistant-guide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .assistant-guide-pet-slot {
+    justify-self: end;
+  }
+  .assistant-guide-bubble {
+    padding: 15px 17px;
+    border-radius: 15px 15px 4px 15px;
+  }
+  .assistant-guide-bubble::after {
+    right: 45px;
+    bottom: -7px;
+    border-top: 0;
+    border-bottom: 1px solid var(--theme-primary-border, #c6d9e9);
+  }
+}
