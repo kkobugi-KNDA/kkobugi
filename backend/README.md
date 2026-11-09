@@ -10,6 +10,7 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 - 서버 확인: http://127.0.0.1:8000/api/v1/health
 - API 문서: http://127.0.0.1:8000/docs
+- 프런트엔드 연결 기준: [API.md](API.md)
 - 설정 변경: `.env.example`을 `.env`로 복사해 수정
 - 검사: `uv run pytest` / `uv run ruff check .`
 
@@ -22,6 +23,7 @@ uv run python -m app.cli create-user --username minho --display-name 박민호
 - 아이디: 영문·숫자·`_.-` 3~64자, 대소문자 구분 없음
 - 비밀번호: 12~128자, Argon2id 해시로 저장
 - DB: `backend/.runtime/kkobugi.sqlite3`. 실행 위치가 바뀌어도 같은 파일을 사용
+- 업로드 CSV: `backend/.runtime/datasets`. 원본은 그대로 두고 검사 결과를 DB에 저장
 
 | API | 동작 |
 | --- | --- |

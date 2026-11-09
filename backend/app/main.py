@@ -8,11 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.auth import router as auth_router
+from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
 from app.config import Settings
 from app.db import Database
 from app.errors import register_error_handlers
-from app.middleware import BrowserSecurityMiddleware
+from app.middleware import BrowserSecurityMiddleware, UploadSizeLimitMiddleware
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -46,6 +47,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # CORS를 바깥에 둬서 허용된 출처에는 오류 응답에도 CORS 헤더를 붙인다.
     application.add_middleware(
+        UploadSizeLimitMiddleware, max_upload_bytes=settings.max_upload_bytes
+    )
+    application.add_middleware(
         BrowserSecurityMiddleware,
         trusted_origins=[*settings.cors_origins, *settings.trusted_origins],
     )
@@ -59,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application.include_router(health_router)
     application.include_router(auth_router)
+    application.include_router(datasets_router)
     return application
 
 

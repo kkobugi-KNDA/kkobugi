@@ -25,6 +25,16 @@ def test_relative_database_path_does_not_depend_on_working_directory(tmp_path, m
     assert settings.database_path == expected_database_path
 
 
+def test_relative_upload_path_does_not_depend_on_working_directory(tmp_path, monkeypatch):
+    # 실행 폴더가 달라져도 이미 등록한 CSV를 같은 폴더에서 찾는다.
+    expected_storage_path = Path(__file__).resolve().parents[1] / ".runtime" / "datasets"
+
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(_env_file=None, dataset_storage_path=Path(".runtime/datasets"))
+
+    assert settings.dataset_storage_path == expected_storage_path
+
+
 @pytest.mark.parametrize("field", ["cors_origins", "trusted_origins"])
 @pytest.mark.parametrize(
     "origin",
