@@ -6,6 +6,7 @@ import platform
 import time
 import warnings
 from bisect import bisect_right
+from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -249,7 +250,21 @@ def train_models(
     artifact_directory: Path,
     timestamp_column: str = "timestamp",
     label_column: str = "label",
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
+    def record(stage: str, status: str, message: str, model_key: ModelKey | None = None):
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "stage": stage,
+                    "status": status,
+                    "timestamp": int(time.time()),
+                    "message": message,
+                    "model_key": model_key,
+                }
+            )
+
+    record("data_check", "running", "원본 파일 식별값, 시각 순서, 숫자와 라벨을 확인합니다.")
     features, labels, split = _read_dataset(
         file_path,
         config,
@@ -260,6 +275,9 @@ def train_models(
         expected_sha256=expected_sha256,
     )
 
+    record("data_check", "completed", f"원본 {len(labels):,}행의 파일·시각·값 검사를 마쳤습니다.")
+    record("split", "running", "지정한 두 시각으로 시간 순서에 따라 데이터를 나눕니다.")
+
     train_features = features[: split.train.end_row]
 
     train_labels = labels[: split.train.end_row]
@@ -267,6 +285,15 @@ def train_models(
     validation_features = features[split.validation.start_row : split.validation.end_row]
 
     validation_labels = labels[split.validation.start_row : split.validation.end_row]
+
+    record(
+        "split",
+        "completed",
+        f"Train {split.train.row_count:,}행 · Valid {split.validation.row_count:,}행 · "
+        f"Test {split.test.row_count:,}행, 입력 채널 {features.shape[1]}개입니다. "
+        "Valid·Test는 학습에 넣지 않습니다.",
+    )
+    record("input_preparation", "running", "선택한 채널과 학습 라벨의 조건을 확인합니다.")
 
     # 모든 선택 모델의 전제조건을 먼저 확인해, 잘못된 실행에 모델 파일을 남기지 않는다.
     if "xgboost" in config.models and len(np.unique(train_labels)) != 2:
@@ -307,9 +334,30 @@ def train_models(
 
     model_results = []
 
+    record(
+        "input_preparation",
+        "completed",
+        f"입력 {features.shape[1]}개 채널의 유한한 숫자와 학습 라벨 조건을 확인했습니다. "
+        "원본의 결측을 채우거나 파생변수를 만들지 않았습니다.",
+    )
+
     with threadpool_limits(limits=1):
         for model_key in config.models:
-            estimator = create_estimator(model_key, config.random_seed)
+            record(
+                "training",
+                "running",
+                (
+                    "정상 Train으로 스케일러·재구성망·이상 기준을 학습합니다. "
+                    "학습 중의 세부 반복률은 추정하지 않습니다."
+                    if model_key == "autoencoder"
+                    else "Train의 입력 채널과 라벨로 분류 모델을 학습합니다. "
+                    "학습 중의 세부 반복률은 추정하지 않습니다."
+                ),
+                model_key,
+            )
+            estimator = create_estimator(
+                model_key, config.random_seed, config.model_options.get(model_key)
+            )
 
             started_at = time.perf_counter()
 
@@ -319,6 +367,15 @@ def train_models(
 
             training_seconds = time.perf_counter() - started_at
 
+            record("training", "completed", "Train을 사용한 모델 학습이 끝났습니다.", model_key)
+            record(
+                "validation",
+                "running",
+                f"학습에 넣지 않은 Valid {len(validation_labels):,}행을 예측합니다. "
+                "예측과 정답 라벨을 비교합니다.",
+                model_key,
+            )
+
             predicted_labels = estimator.predict(validation_features)
 
             anomaly_scores = _anomaly_scores(estimator, validation_features)
@@ -327,12 +384,19 @@ def train_models(
                 validation_labels, predicted_labels, anomaly_scores
             )
 
+            record(
+                "validation", "completed", "Valid 예측과 평가 지표 계산을 마쳤습니다.", model_key
+            )
+            record("saving", "running", "모델 파일과 파일 식별값을 저장합니다.", model_key)
+
             artifact_path = _artifact_path(artifact_directory, model_key)
 
             with artifact_path.open("xb") as artifact_file:
                 joblib.dump(estimator, artifact_file, compress=3)
 
             parameters = dict(catalog[model_key].parameters)
+
+            parameters.update(config.model_options.get(model_key, {}))
 
             parameters["random_state"] = config.random_seed
 
@@ -362,9 +426,18 @@ def train_models(
                 ).model_dump()
             )
 
+            record("saving", "completed", "학습한 모델 파일과 지표를 저장했습니다.", model_key)
+
     # JSON을 먼저 읽어 버전을 확인한 다음에만 서버가 만든 joblib을 역직렬화한다.
+    record("saving", "running", "학습 설정과 원본 식별값을 실행 정보 파일에 저장합니다.")
     with (artifact_directory / "metadata.json").open("x", encoding="utf-8") as metadata_file:
         json.dump(metadata, metadata_file, ensure_ascii=False, allow_nan=False)
+    record("saving", "completed", "실행 정보 파일 저장을 마쳤습니다.")
+    record(
+        "completed",
+        "completed",
+        "학습과 중간 확인이 끝났습니다. Test 평가는 아직 실행하지 않았습니다.",
+    )
 
     return {
         "split": split.model_dump(),

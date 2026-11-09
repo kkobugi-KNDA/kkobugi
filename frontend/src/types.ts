@@ -101,6 +101,17 @@ export interface SplitPart {
   end_row: number;
   row_count: number;
 }
+export type TrainingStage =
+  'data_check' | 'split' | 'input_preparation' | 'training' | 'validation' | 'saving' | 'completed';
+
+export interface TrainingProgressEvent {
+  stage: TrainingStage;
+  status: 'running' | 'completed' | 'failed';
+  timestamp: number;
+  message: string;
+  model_key?: ModelKey | null;
+}
+
 export interface RunDetail {
   run: RunSummary;
   configuration: RunCreate;
@@ -108,6 +119,8 @@ export interface RunDetail {
   split: { train: SplitPart; validation: SplitPart; test: SplitPart } | null;
   environment: Record<string, string>;
   warnings: string[];
+  // 과거 실행에는 단계별 기록이 없을 수 있다. 빈 기록에서 완료 단계를 추측하지 않는다.
+  training_progress?: TrainingProgressEvent[];
 }
 export interface ClassMetrics {
   precision: number | null;

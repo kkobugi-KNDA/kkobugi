@@ -7,20 +7,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.assistant import router as assistant_router
 from app.api.auth import router as auth_router
 from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
 from app.api.models import router as models_router
 from app.api.observations import router as observations_router
+from app.api.replays import router as replays_router
+from app.api.reports import router as reports_router
 from app.api.reviews import router as reviews_router
 from app.api.runs import router as runs_router
 from app.api.series import router as series_router
+from app.api.training import router as training_router
 from app.config import Settings
 from app.db import Database
 from app.errors import register_error_handlers
 from app.frontend import FrontendFiles
 from app.memory_work import MemoryWorkGate
 from app.middleware import BrowserSecurityMiddleware, UploadSizeLimitMiddleware
+from app.services.reports import ReportManager
 from app.services.runs import RunManager
 
 
@@ -39,6 +44,8 @@ def create_app(
 
         run_manager: RunManager | None = None
 
+        report_manager: ReportManager | None = None
+
         try:
             # 기존 테이블과 계정은 보존하고, 없는 테이블만 생성한다.
             database.create_tables()
@@ -48,11 +55,19 @@ def create_app(
             run_manager.recover_interrupted()
             application.state.run_manager = run_manager
 
+            # 보고서는 기존 DB를 바꾸지 않고 같은 영구 저장공간에 별도로 보관한다.
+            report_manager = ReportManager(settings)
+
+            report_manager.recover_interrupted()
+            application.state.report_manager = report_manager
+
             yield
         finally:
             # 작업이 자기 DB 연결을 정리한 뒤 전체 DB 연결을 닫는다.
             if run_manager is not None:
                 run_manager.shutdown()
+            if report_manager is not None:
+                report_manager.shutdown()
             database.dispose()
 
     application = FastAPI(
@@ -92,6 +107,10 @@ def create_app(
     application.include_router(series_router)
     application.include_router(observations_router)
     application.include_router(reviews_router)
+    application.include_router(training_router)
+    application.include_router(replays_router)
+    application.include_router(assistant_router)
+    application.include_router(reports_router)
     if settings.frontend_dist_path is not None:
         application.mount("/", FrontendFiles(settings.frontend_dist_path), name="frontend")
     return application
