@@ -1,0 +1,119 @@
+.prediction-panel {
+  padding: 24px 28px;
+}
+.prediction-panel .section-heading {
+  margin-bottom: 20px;
+}
+.prediction-panel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.prediction-panel .section-heading p {
+  font-size: 12px;
+  color: #657586;
+}
+.prediction-controls {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 20px;
+}
+.prediction-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: #657586;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.prediction-hint a {
+  color: #285fa9;
+}
+.prediction-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0 8px;
+  font-size: 12px;
+  color: #697586;
+}
+.prediction-summary > span:first-child {
+  font-weight: 650;
+  color: #a64f25;
+}
+.prediction-summary i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  background: #c15c2c;
+}
+.prediction-points {
+  margin-top: 20px;
+  border-top: 1px solid #e4e9ee;
+  padding-top: 18px;
+}
+.prediction-points h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.prediction-points p {
+  font-size: 12px;
+  color: #657586;
+  overflow-wrap: anywhere;
+}
+.prediction-table-scroll {
+  max-height: 260px;
+  overflow: auto;
+  margin: 12px 0;
+}
+.prediction-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.prediction-table-scroll th,
+.prediction-table-scroll td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e7ecf0;
+  white-space: nowrap;
+}
+.prediction-table-scroll th {
+  position: sticky;
+  top: 0;
+  background: #f5f7f9;
+  color: #657586;
+}
+.prediction-positive {
+  color: #a44921;
+  font-weight: 650;
+}
+.rv-label-track.rv-prediction-track {
+  background: #fff6ef;
+  border-color: #ebd5c6;
+}
+.rv-label-track.rv-prediction-track > button {
+  background: #c56232;
+  border-color: #ad4b21;
+}
+.rv-label-track.rv-prediction-track > button:hover {
+  background: #a84c22;
+}
+.rv-prediction-dot,
+.rv-legend-orange {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #c56232;
+}
+@media (max-width: 700px) {
+  .prediction-controls {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .prediction-panel {
+    padding: 20px;
+  }
+}
