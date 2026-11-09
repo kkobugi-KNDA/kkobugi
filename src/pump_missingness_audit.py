@@ -22,12 +22,25 @@ def default_source():
     raise FileNotFoundError(f"{data_dir}에 sensor.csv 또는 archive.zip을 넣어주세요.")
 
 
+def read_csv_exact(path, **kwargs):
+    """CSV에 저장한 실수를 저장 전 값과 똑같이 읽습니다.
+
+    pandas 3.1부터는 기본 읽기가 정확하고 float_precision 옵션은 폐기 예정입니다. 그 이전 버전은
+    기본 읽기가 마지막 자리에서 달라질 수 있어 round_trip을 지정합니다.
+    """
+    major, minor = (int(part) for part in pd.__version__.split(".")[:2])
+    if (major, minor) < (3, 1):
+        kwargs.setdefault("float_precision", "round_trip")
+    return pd.read_csv(path, **kwargs)
+
+
 def read_sensor_data(path):
     # Kaggle 원본 ZIP과 압축을 푼 CSV를 모두 지원합니다.
+    # pandas 버전과 관계없이 같은 실수 값이 읽히도록 read_csv_exact를 씁니다.
     if path.suffix.lower() == ".zip":
         with ZipFile(path) as archive, archive.open("sensor.csv") as member:
-            return pd.read_csv(member)
-    return pd.read_csv(path)
+            return read_csv_exact(member)
+    return read_csv_exact(path)
 
 
 def missing_runs(is_missing, break_before):
