@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 2,
+  "purpose": "web-dashboard-pet",
+  "name": "꼬부석호",
+  "sheet": "spritesheet-extended.png",
+  "width": 1536,
+  "height": 2288,
+  "columns": 8,
+  "rows": 11,
+  "cellWidth": 192,
+  "cellHeight": 208,
+  "totalFrames": 73,
+  "alpha": true,
+  "sha256": "d5e2577b6bc6ccd5bd5707e80a5ec63c2467d1816d488b5e195ad3aa1f698e25",
+  "registeredInChatGPT": false,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frameCount": 6,
+      "durationsMs": [
+        280,
+        110,
+        110,
+        140,
+        140,
+        320
+      ],
+      "label": "쉬는 중"
+    },
+    "running-right": {
+      "row": 1,
+      "frameCount": 8,
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "label": "오른쪽 걷기"
+    },
+    "running-left": {
+      "row": 2,
+      "frameCount": 8,
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "label": "왼쪽 걷기"
+    },
+    "waving": {
+      "row": 3,
+      "frameCount": 4,
+      "durationsMs": [
+        140,
+        140,
+        140,
+        280
+      ],
+      "label": "인사"
+    },
+    "jumping": {
+      "row": 4,
+      "frameCount": 5,
+      "durationsMs": [
+        140,
+        140,
+        140,
+        140,
+        280
+      ],
+      "label": "점프"
+    },
+    "failed": {
+      "row": 5,
+      "frameCount": 8,
+      "durationsMs": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        140,
+        240
+      ],
+      "label": "아쉬움"
+    },
+    "waiting": {
+      "row": 6,
+      "frameCount": 6,
+      "durationsMs": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        260
+      ],
+      "label": "기다리기"
+    },
+    "running": {
+      "row": 7,
+      "frameCount": 6,
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ],
+      "label": "생각 중"
+    },
+    "review": {
+      "row": 8,
+      "frameCount": 6,
+      "durationsMs": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        280
+      ],
+      "label": "확인 중"
+    }
+  },
+  "lookDirections": [
+    {
+      "degrees": 0,
+      "row": 9,
+      "column": 0
+    },
+    {
+      "degrees": 22.5,
+      "row": 9,
+      "column": 1
+    },
+    {
+      "degrees": 45,
+      "row": 9,
+      "column": 2
+    },
+    {
+      "degrees": 67.5,
+      "row": 9,
+      "column": 3
+    },
+    {
+      "degrees": 90,
+      "row": 9,
+      "column": 4
+    },
+    {
+      "degrees": 112.5,
+      "row": 9,
+      "column": 5
+    },
+    {
+      "degrees": 135,
+      "row": 9,
+      "column": 6
+    },
+    {
+      "degrees": 157.5,
+      "row": 9,
+      "column": 7
+    },
+    {
+      "degrees": 180,
+      "row": 10,
+      "column": 0
+    },
+    {
+      "degrees": 202.5,
+      "row": 10,
+      "column": 1
+    },
+    {
+      "degrees": 225,
+      "row": 10,
+      "column": 2
+    },
+    {
+      "degrees": 247.5,
+      "row": 10,
+      "column": 3
+    },
+    {
+      "degrees": 270,
+      "row": 10,
+      "column": 4
+    },
+    {
+      "degrees": 292.5,
+      "row": 10,
+      "column": 5
+    },
+    {
+      "degrees": 315,
+      "row": 10,
+      "column": 6
+    },
+    {
+      "degrees": 337.5,
+      "row": 10,
+      "column": 7
+    }
+  ],
+  "reducedMotion": {
+    "animation": "idle",
+    "frame": 0
+  }
+}
