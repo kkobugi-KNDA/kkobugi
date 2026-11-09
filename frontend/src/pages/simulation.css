@@ -383,3 +383,7 @@
   pointer-events: none;
   filter: drop-shadow(0 0 3px #8ab7d866);
 }
+
+.simulation-workspace.has-signal .pump-simulation-caption {
+  display: none;
+}
