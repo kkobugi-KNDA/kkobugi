@@ -4,7 +4,8 @@ import { API_BASE, ApiError } from './api';
 export async function axRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
 
-  if (init.body) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData))
+    headers.set('Content-Type', 'application/json');
   if (init.method && init.method !== 'GET') headers.set('X-Requested-With', 'kkobugi-web');
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: 'include' });
 

@@ -28,6 +28,11 @@ class BrowserSecurityMiddleware:
                 "/api/v1/runs",
                 "/api/v1/observations",
                 "/api/v1/reviews",
+                "/api/v1/replays",
+                "/api/v1/reports",
+                "/api/v1/assistant",
+                "/api/v1/training",
+                "/api/v1/simulations",
             )
         )
 
@@ -109,8 +114,12 @@ class UploadSizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        is_dataset = scope["path"].rstrip("/") == "/api/v1/datasets"
-        if is_dataset and scope["method"] == "POST":
+        is_file_upload = scope["path"].rstrip("/") in {
+            "/api/v1/datasets",
+            "/api/v1/simulations",
+        }
+
+        if is_file_upload and scope["method"] == "POST":
             max_request_bytes = self.max_request_bytes
         elif scope["path"].rstrip("/") == "/api/v1/auth/login":
             max_request_bytes = 16 * 1024
@@ -132,7 +141,7 @@ class UploadSizeLimitMiddleware:
                     raise HTTPException(
                         status_code=413,
                         detail={
-                            "code": "DATASET_TOO_LARGE" if is_dataset else "REQUEST_TOO_LARGE",
+                            "code": "DATASET_TOO_LARGE" if is_file_upload else "REQUEST_TOO_LARGE",
                             "message": "요청 내용이 허용된 크기를 넘었습니다.",
                         },
                     )
