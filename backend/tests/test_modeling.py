@@ -509,6 +509,18 @@ def test_lightgbm_model_save_reload_and_test_predictions_use_same_features(tmp_p
     assert stored_estimator.n_features_in_ == 2
     assert stored_estimator.get_params()["random_state"] == 42
     assert stored_estimator.get_params()["n_jobs"] == 1
+    validation_features = np.array(
+        [[row / 100, 10.0 if row % 2 else 0.0] for row in range(60, 80)]
+    )
+
+    expected_probabilities = stored_estimator.predict_proba(validation_features)[:, 1]
+
+    scores = modeling._anomaly_scores(stored_estimator, validation_features)
+
+    # 실제 저장된 LightGBM의 raw margin은 1을 넘는다. 이를 확률로 표시하면 100%를 넘는다.
+    assert np.abs(stored_estimator.decision_function(validation_features)).max() > 1
+    assert ((scores >= 0) & (scores <= 1)).all()
+    np.testing.assert_allclose(scores, expected_probabilities)
 
     def forbid_fit(*arguments, **keyword_arguments):
         raise AssertionError("Test 조회 중 재학습하면 안 됩니다.")
@@ -527,6 +539,34 @@ def test_lightgbm_model_save_reload_and_test_predictions_use_same_features(tmp_p
 
     assert metrics.f1 == 1.0
     assert metrics.sample_count == 20
+
+
+def test_classifier_with_both_score_methods_uses_probability_and_class_order():
+    class Classifier:
+        # 클래스 배열의 순서를 고정해서 가정하지 않고 이상 클래스 1의 위치를 찾는다.
+        classes_ = np.array([1, 0])
+
+        def predict_proba(self, features):
+            return np.array([[0.8, 0.2], [0.1, 0.9]])
+
+        def decision_function(self, features):
+            raise AssertionError("분류 모델의 raw margin을 확률 대신 사용하면 안 됩니다.")
+
+    scores = modeling._anomaly_scores(Classifier(), np.ones((2, 1)))
+
+    np.testing.assert_array_equal(scores, [0.8, 0.1])
+
+
+@pytest.mark.parametrize("invalid_score", [-0.1, 1.1, float("inf"), float("nan")])
+def test_invalid_classifier_probability_is_rejected_instead_of_clipped(invalid_score):
+    class InvalidClassifier:
+        classes_ = np.array([0, 1])
+
+        def predict_proba(self, features):
+            return np.array([[0.0, invalid_score]])
+
+    with pytest.raises(ValueError, match="확률 범위"):
+        modeling._anomaly_scores(InvalidClassifier(), np.ones((1, 1)))
 
 
 def test_legacy_artifact_without_lightgbm_version_still_evaluates(model_data, tmp_path):

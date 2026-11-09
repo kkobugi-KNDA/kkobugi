@@ -219,15 +219,24 @@ def calculate_metrics(
 
 
 def _anomaly_scores(estimator, features: np.ndarray) -> np.ndarray:
-    if hasattr(estimator, "decision_function"):
-        # AutoEncoder의 재구성 오차를 확률로 바꾸지 않고 순위 지표에 사용한다.
-        return estimator.decision_function(features)
+    if hasattr(estimator, "predict_proba"):
+        # LightGBM도 decision_function을 제공하지만 그 값은 확률이 아닌 raw margin이다.
+        # 분류 모델은 반드시 이상 클래스의 확률을 먼저 읽는다.
+        class_values = list(estimator.classes_)
 
-    class_values = list(estimator.classes_)
+        if 1 not in class_values:
+            return np.zeros(len(features))
+        probabilities = np.asarray(
+            estimator.predict_proba(features)[:, class_values.index(1)], dtype=float
+        )
 
-    if 1 not in class_values:
-        return np.zeros(len(features))
-    return estimator.predict_proba(features)[:, class_values.index(1)]
+        if not np.isfinite(probabilities).all() or np.any(
+            (probabilities < 0) | (probabilities > 1)
+        ):
+            raise ValueError("분류 모델의 확률 범위를 확인할 수 없습니다.")
+        return probabilities
+    # 확률을 내지 않는 AutoEncoder는 재구성 오차를 그대로 사용한다.
+    return estimator.decision_function(features)
 
 
 def train_models(

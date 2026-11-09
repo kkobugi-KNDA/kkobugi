@@ -424,16 +424,25 @@ def test_validation_predicts_each_model_in_exact_saved_feature_order(series_clie
         np.testing.assert_array_equal(
             [point["predicted_code"] for point in result["items"]], estimator.predict(features)
         )
-        np.testing.assert_allclose(
-            [point["score"] for point in result["items"]],
-            modeling._anomaly_scores(estimator, features),
-        )
         if model_key == "autoencoder":
             assert result["score_type"] == "reconstruction_error"
             assert result["threshold"] == estimator.threshold_
+            np.testing.assert_allclose(
+                [point["score"] for point in result["items"]],
+                estimator.decision_function(features),
+            )
         else:
             assert result["score_type"] == "probability"
             assert result["threshold"] is None
+            # API가 계산한 값과 같은 내부 함수를 재사용하지 않고 분류기 확률과 직접 비교한다.
+            scores = np.array([point["score"] for point in result["items"]])
+
+            assert ((scores >= 0) & (scores <= 1)).all()
+            np.testing.assert_allclose(
+                scores, estimator.predict_proba(features)[:, list(estimator.classes_).index(1)]
+            )
+            if model_key == "lightgbm":
+                assert np.abs(estimator.decision_function(features)).max() > 1
         assert response.headers["cache-control"] == "no-store"
     assert original_artifacts == {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest()

@@ -30,6 +30,9 @@ import TimeSeriesChart, {
   csvTimestampToNumber,
   type SelectedRange,
 } from '../components/TimeSeriesChart';
+import PredictionPanel from '../components/PredictionPanel';
+import ReviewWorkflowPanel from '../components/ReviewWorkflowPanel';
+import { emptyPredictionOverlay, type PredictionOverlay } from '../lib/prediction-api';
 import type { ChartPoint, DatasetDetail, Observation } from '../types';
 import './review.css';
 
@@ -122,6 +125,15 @@ export default function ReviewPage() {
   const [originalLabelIntervals, setOriginalLabelIntervals] = useState<SelectedRange[]>([]),
     [originalLabelTotal, setOriginalLabelTotal] = useState(0),
     [labelStatus, setLabelStatus] = useState('');
+
+  // 다른 CSV·채널로 옮긴 뒤 이전 모델 결과를 근거로 저장하지 않도록 따로 초기화한다.
+  const [predictionOverlay, setPredictionOverlay] =
+    useState<PredictionOverlay>(emptyPredictionOverlay);
+
+  useEffect(() => {
+    setPredictionOverlay(emptyPredictionOverlay);
+  }, [datasetId, channel, mode, user?.id]);
+
   useEffect(() => {
     const refresh = () => setDrafts(readObservationDrafts(storageKey));
     refresh();
@@ -334,7 +346,8 @@ export default function ReviewPage() {
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: 'greedy',
-      worker: true,
+      // 배포 번들에서도 읽기 완료 콜백이 도달하도록 FileReader로 1MiB씩 처리한다.
+      worker: false,
       chunkSize: 1024 * 1024,
       chunk(result, parser) {
         parserRef.current = parser;
@@ -590,6 +603,14 @@ export default function ReviewPage() {
             </div>
           </section>
           {error && <Notice tone="error">{error}</Notice>}
+          <PredictionPanel
+            key={`prediction:${user?.id}:${mode}:${datasetId}:${channel}`}
+            datasetId={datasetId}
+            channel={channel}
+            mode={mode}
+            selection={selection}
+            onChange={setPredictionOverlay}
+          />
           <section className="surface rv-chart-surface">
             <div className="section-heading">
               <div>
@@ -622,6 +643,10 @@ export default function ReviewPage() {
                     : series.labelIntervalsTruncated
                 }
                 labelStatus={mode === 'live' ? labelStatus : undefined}
+                predictionIntervals={predictionOverlay.intervals}
+                predictionLabel={predictionOverlay.label}
+                predictionStatus={predictionOverlay.status}
+                predictionIntervalsTruncated={predictionOverlay.truncated}
               />
             ) : (
               <EmptyState
@@ -774,6 +799,16 @@ export default function ReviewPage() {
               </button>
             )}
           </section>
+          <ReviewWorkflowPanel
+            key={`workflow:${user?.id}:${mode}:${datasetId}:${channel}`}
+            datasetId={datasetId}
+            channel={channel}
+            selection={selection}
+            modelResult={predictionOverlay.modelResult}
+            observations={saved}
+            observationsTotal={savedTotal}
+            mode={mode}
+          />
           {mode === 'live' && ownDrafts.length > 0 && (
             <details className="surface rv-legacy-drafts">
               <summary>이 브라우저에 남아 있는 이전 초안 {ownDrafts.length}개</summary>
