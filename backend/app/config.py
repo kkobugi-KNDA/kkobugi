@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # 업로드 원본은 DB와 별도로 보관하고, API를 통해서만 접근한다.
     dataset_storage_path: Path = BACKEND_DIR / ".runtime" / "datasets"
 
+    # 학습한 모델은 서버가 만든 파일만 이 폴더에서 읽는다.
+    model_storage_path: Path = BACKEND_DIR / ".runtime" / "models"
+
+    # 한 번에 한 모델 작업을 실행하고, 나머지는 제한된 대기열에 둔다.
+    max_pending_runs: int = Field(default=8, ge=1, le=100)
+
+    max_training_rows: int = Field(default=250_000, ge=3, le=1_000_000)
+
+    max_training_features: int = Field(default=128, ge=1, le=128)
+
     # 파일 크기는 바이트, 행·열 제한은 CSV 검사에 사용한다.
     max_upload_bytes: int = Field(default=200 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024)
 
@@ -76,18 +86,18 @@ class Settings(BaseSettings):
 
         return [origin.rstrip("/") for origin in origins]
 
-    @field_validator("database_path", "dataset_storage_path")
+    @field_validator("database_path", "dataset_storage_path", "model_storage_path")
     @classmethod
-    def resolve_database_path(cls, database_path: Path) -> Path:
+    def resolve_local_path(cls, local_path: Path) -> Path:
         # 메모리 DB는 테스트에서 사용하며 파일 경로로 변환하지 않는다.
-        if str(database_path) == ":memory:":
-            return database_path
-        database_path = database_path.expanduser()
+        if str(local_path) == ":memory:":
+            return local_path
+        local_path = local_path.expanduser()
 
-        if not database_path.is_absolute():
-            database_path = BACKEND_DIR / database_path
+        if not local_path.is_absolute():
+            local_path = BACKEND_DIR / local_path
 
-        return database_path.resolve()
+        return local_path.resolve()
 
     @model_validator(mode="after")
     def require_secure_cookie(self) -> "Settings":

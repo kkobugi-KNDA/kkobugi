@@ -10,10 +10,13 @@ from app import __version__
 from app.api.auth import router as auth_router
 from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
+from app.api.models import router as models_router
+from app.api.runs import router as runs_router
 from app.config import Settings
 from app.db import Database
 from app.errors import register_error_handlers
 from app.middleware import BrowserSecurityMiddleware, UploadSizeLimitMiddleware
+from app.services.runs import RunManager
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -26,11 +29,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         application.state.database = database
 
+        run_manager: RunManager | None = None
+
         try:
             # 기존 테이블과 계정은 보존하고, 없는 테이블만 생성한다.
             database.create_tables()
+            run_manager = RunManager(database, settings)
+
+            # 완료한 결과는 보존하고, 강제 종료로 남은 실행 상태만 정리한다.
+            run_manager.recover_interrupted()
+            application.state.run_manager = run_manager
+
             yield
         finally:
+            # 작업이 자기 DB 연결을 정리한 뒤 전체 DB 연결을 닫는다.
+            if run_manager is not None:
+                run_manager.shutdown()
             database.dispose()
 
     application = FastAPI(
@@ -64,6 +78,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(health_router)
     application.include_router(auth_router)
     application.include_router(datasets_router)
+    application.include_router(models_router)
+    application.include_router(runs_router)
     return application
 
 

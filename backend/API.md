@@ -6,6 +6,7 @@ Figma의 데이터 선택·CSV 검사 화면부터 연결한다. 실행 중인 �
 - 주소: `/api/v1`. 쿠키 인증은 `credentials: "include"` 사용.
 - 변경 요청: 허용된 `Origin`과 `X-Requested-With: kkobugi-web` 필요.
 - 오류: `{"error":{"code":"...","message":"..."}}`. 입력 오류에는 `fields`도 포함.
+- `created_at`, `updated_at`은 Unix 초 단위다. CSV의 측정 시각과 구분한다.
 - 화면 표시명과 저장값은 구분한다. CSV의 `normal/abnormal`을 화면에서 `Normal/UnNormal`로 표시해도 됨.
 - 메뉴·모달·확대 상태는 프런트엔드에서 관리한다. 기존 응답 필드의 의미를 바꾸지 않고 추가한다.
 
@@ -75,13 +76,79 @@ CSV가 아닌 파일명은 `415`, 크기·행 수 초과는 `413`이다. 기본 
 환경설정으로 바꿀 수 있다. 요청 전체는 multipart 항목을 포함해 파일 제한보다 1 MiB 큰 크기까지 받는다.
 같은 계정·파일 SHA256·네 가지 설정이 같으면 기존 ID를 돌려준다. 수정한 CSV는 새 자료로 등록한다.
 
+## 모델 학습·비교·선택
+
+모델 목록은 API에서 받아 표시한다. 이름 대신 `dummy`, `xgboost`, `autoencoder` key를 요청에 사용한다.
+
+| 메서드·주소 | 요청 | 응답 |
+| --- | --- | --- |
+| `GET /models` | 쿠키 | 선택 가능한 모델·설명·고정 학습 설정 |
+| `POST /runs` | 아래 JSON | `202`, 실행 ID·상태·설정 |
+| `GET /runs` | `limit=20`, `offset=0` | 내 실행 기록·전체 개수 |
+| `GET /runs/{run_id}` | 쿠키 | 상태·설정·분할·입력 SHA256·라이브러리 버전 |
+| `GET /runs/{run_id}/results` | `sort_by=f1` 등 | Valid 지표 순위·클래스별 지표·혼동행렬 |
+| `POST /runs/{run_id}/selection` | `{"model_key":"xgboost"}` | 사용자가 선택한 모델과 실행 정보 |
+| `POST /runs/{run_id}/evaluation` | 쿠키 | `202`, 선택한 모델의 Test 평가 시작 |
+| `GET /runs/{run_id}/evaluation` | 쿠키 | Test 평가 상태·지표 |
+
+기록과 결과는 로그인한 계정만 조회한다. 다른 계정의 실행과 없는 ID는 모두 `404`다.
+
+### 학습 요청 예시
+
+```json
+{
+  "dataset_id": "CSV 등록 응답의 dataset.id",
+  "feature_columns": ["sensor_00", "sensor_04"],
+  "models": ["dummy", "xgboost", "autoencoder"],
+  "train_end": "2018-06-30T23:59:00",
+  "validation_end": "2018-07-31T23:59:00",
+  "ranking_metric": "f1",
+  "random_seed": 42
+}
+```
+
+날짜는 예시다. 특징·모델·분할 경계는 사용자가 지정한다. `dataset_id`는 실제 등록된 32자리 ID다.
+
+- Train: `시각 <= train_end`, Valid: `train_end < 시각 <= validation_end`, Test: 나머지 이후 행.
+- 세 구간에 각각 데이터가 있어야 한다. 시간대 표기는 CSV와 일치해야 한다.
+- 서버는 행을 섞거나 stratify·보간·PCA·특징 추가·오버샘플링을 수행하지 않는다.
+- XGBoost는 Train에 두 라벨이 필요하다. AutoEncoder는 정상 Train이 두 행 이상 필요하다.
+- AutoEncoder의 스케일러·재구성 신경망은 정상 Train만 학습한다. 기준은 정상 Train 오차의 99분위다.
+- Valid·Test에서는 신경망과 기준값을 바꾸지 않는다. 재구성 오차는 고장 확률로 표시하지 않는다.
+
+검사를 통과한 CSV와 숫자 채널만 학습할 수 있다. 시간·라벨 열을 특징으로 지정하면 `422`다.
+구간별 라벨 조건 등 실제 CSV를 읽어야 확인되는 오류는 비동기 실행의 `failed` 상태와 설명으로 표시한다.
+
+### 비교·선택·시험 평가 순서
+
+1. `POST /runs`로 요청하고 `GET /runs/{run_id}`에서 완료를 확인한다.
+2. `GET /runs/{run_id}/results`로 Valid 지표를 비교한다. 모델을 자동 선택하지 않는다.
+3. 사용자가 `POST /selection`으로 모델을 고른다. 이 요청만으로 Test 평가를 시작하지 않는다.
+4. `POST /evaluation`으로 선택한 모델의 Test를 평가하고 `GET /evaluation`으로 결과를 확인한다.
+
+학습 상태는 `queued/running/completed/failed`다. 평가 상태는 처음 `not_started`이며 같은 상태 순서로 진행한다.
+완료한 평가를 다시 요청하면 저장된 결과를 `200`으로 반환한다. 대기·실행 중인 평가는 중복 실행하지 않는다.
+Test 평가를 시작하면 모델 선택이 잠긴다. 바꾸려는 요청은 `409`다. 평가 시 모델을 다시 학습하지 않는다.
+
+정렬 기준은 `f1`, `precision`, `recall`, `accuracy`, `balanced_accuracy`, `roc_auc`, `average_precision`이다.
+기본은 등록한 `ranking_metric`이며 높은 값부터 정렬한다. 계산할 수 없는 값은 `null`로 뒤에 표시한다.
+지표의 양성은 CSV 등록 때 지정한 `abnormal_label`이다. 클래스별 support와 지표도 함께 반환한다.
+혼동행렬은 행이 실제값, 열이 예측값이며 순서는 모두 `[normal, abnormal]`이다.
+수렴·한 클래스 구간 등 주의할 조건은 `warnings`로 전달한다.
+
+모델과 실행 설정·입력 파일 해시·특징 순서·패키지 버전을 서버에 보관한다.
+평가는 업로드된 CSV 기준이다. 업로드 전에 전체 기간을 사용한 보간·전처리가 있었는지는 별도 확인이 필요하다.
+
+로컬 단일 API 프로세스에서 학습·평가 작업을 한 번에 하나씩 처리한다.
+기본 대기 한도는 실행 중 작업 포함 8개이며 초과하면 `429`다. 기본 학습 제한은 25만 행·128개 특징이다.
+완료한 결과는 재시작 후 유지하고, 강제 종료로 끝내지 못한 작업은 다음 시작 때 `failed`로 표시한다.
+
 ## 다음 단계의 연결 단위
 
 아래 기능은 아직 구현하지 않았다. CSV 등록 API와 별도로 이어서 개발한다.
 
 | Figma 기능 | API 연결 단위 |
 | --- | --- |
-| 모델 선택·학습·비교 | `/models`, `/runs`: 데이터셋 ID·선택 모델·설정·평가지표·실행 상태 |
 | 채널 그래프·구간 확대 | `/datasets/{id}/series`: 채널·실제 시작/종료 시각 |
 | 현장 관찰 추가·수정 | `/observations`: 데이터셋·구간·관찰 내용·작성 계정 |
 | 검토 완료 | `/reviews`: 사람 판단과 검토 완료 상태를 각각 저장 |
