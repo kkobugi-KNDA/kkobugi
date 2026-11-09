@@ -252,8 +252,8 @@ export default function TimeSeriesChart({
         >
           <defs>
             <linearGradient id={`${gradient}-${large}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3d7de1" stopOpacity=".12" />
-              <stop offset="100%" stopColor="#3d7de1" stopOpacity="0" />
+              <stop offset="0%" stopColor="var(--theme-primary, #3d7de1)" stopOpacity=".12" />
+              <stop offset="100%" stopColor="var(--theme-primary, #3d7de1)" stopOpacity="0" />
             </linearGradient>
             <clipPath id={`${gradient}-clip-${large}`}>
               <rect x={LEFT} y={TOP} width={W - LEFT - RIGHT} height={H - TOP - BOTTOM} />
@@ -293,7 +293,7 @@ export default function TimeSeriesChart({
             <path
               d={path}
               fill="none"
-              stroke="#3272ce"
+              stroke="var(--theme-primary, #3272ce)"
               strokeWidth="2"
               strokeLinejoin="round"
               vectorEffect="non-scaling-stroke"
@@ -312,8 +312,8 @@ export default function TimeSeriesChart({
                     cx={x(hover.time)}
                     cy={y(hover.value)}
                     r="4.5"
-                    fill="#fff"
-                    stroke="#3272ce"
+                    fill="var(--theme-surface, #fff)"
+                    stroke="var(--theme-primary, #3272ce)"
                     strokeWidth="2"
                   />
                 )}

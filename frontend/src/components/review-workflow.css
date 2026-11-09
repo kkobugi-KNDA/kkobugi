@@ -14,7 +14,7 @@
 }
 .rw-panel .section-heading p,
 .rw-hint {
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
   font-size: 12px;
   line-height: 1.7;
 }
@@ -35,18 +35,18 @@
   background: transparent;
   color: inherit;
   border: 0;
-  border-bottom: 1px solid #e3e9ef;
+  border-bottom: 1px solid var(--theme-border, #e3e9ef);
   padding: 18px 0;
   cursor: pointer;
 }
 .rw-record:hover {
-  background: #f7fafc;
+  background: var(--theme-primary-surface, #f7fafc);
 }
 .rw-record > div {
   display: flex;
   gap: 12px;
   align-items: center;
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
   font-size: 11px;
   margin-bottom: 10px;
 }
@@ -61,7 +61,7 @@
 .rw-record > small {
   display: block;
   margin-top: 8px;
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
   line-height: 1.6;
 }
 .rw-modal {
@@ -74,23 +74,23 @@
   width: 100%;
   min-height: 100px;
   resize: vertical;
-  border: 1px solid #dce4eb;
-  background: #fff;
-  color: #243847;
+  border: 1px solid var(--theme-border, #dce4eb);
+  background: var(--theme-surface, #fff);
+  color: var(--theme-text-strong, #243847);
   padding: 12px;
   font: inherit;
   line-height: 1.7;
 }
 .rw-modal textarea:disabled {
-  background: #f6f8fa;
-  color: #4b5f70;
+  background: var(--theme-surface-raised, #f6f8fa);
+  color: var(--theme-text-secondary, #4b5f70);
 }
 .rw-context {
   font-size: 12px;
-  color: #607384;
+  color: var(--theme-text-secondary, #607384);
   line-height: 1.8;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e3e9ef;
+  border-bottom: 1px solid var(--theme-border, #e3e9ef);
 }
 .rw-checkbox,
 .rw-observation-choice {
@@ -102,10 +102,10 @@
 .rw-checkbox input,
 .rw-observation-choice input {
   margin-top: 3px;
-  accent-color: #3272ce;
+  accent-color: var(--theme-primary, #3272ce);
 }
 .rw-observation-choice {
-  border-bottom: 1px solid #e3e9ef;
+  border-bottom: 1px solid var(--theme-border, #e3e9ef);
   padding: 12px 0;
   cursor: pointer;
 }
@@ -120,7 +120,7 @@
 .rw-observation-choice small {
   display: block;
   margin-top: 5px;
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
   line-height: 1.7;
 }
 .rw-detail-heading {
@@ -128,15 +128,15 @@
   align-items: center;
   gap: 12px;
   font-size: 12px;
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
 }
 .rw-evidence {
   margin: 20px 0;
-  border-top: 1px solid #dce5ed;
+  border-top: 1px solid var(--theme-border, #dce5ed);
   padding-top: 2px;
 }
 .rw-evidence-editor {
-  border: 1px solid #dce5ed;
+  border: 1px solid var(--theme-border, #dce5ed);
   margin: 20px 0;
   padding: 16px;
   min-width: 0;
@@ -151,7 +151,7 @@
 .rw-evidence p {
   font-size: 12px;
   line-height: 1.8;
-  color: #607384;
+  color: var(--theme-text-secondary, #607384);
 }
 .rw-model-evidence > strong,
 .rw-observation-evidence > strong {
@@ -165,7 +165,7 @@
 }
 .rw-metrics dt {
   font-size: 11px;
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
 }
 .rw-metrics dd {
   margin: 7px 0 0;
@@ -184,7 +184,7 @@
   padding: 10px 0;
 }
 .rw-identifiers dt {
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
   margin-top: 8px;
 }
 .rw-identifiers dd {
@@ -193,11 +193,11 @@
 }
 .rw-observation-evidence {
   padding: 15px 0;
-  border-bottom: 1px solid #e3e9ef;
+  border-bottom: 1px solid var(--theme-border, #e3e9ef);
 }
 .rw-observation-evidence > span {
   font-size: 11px;
-  color: #758390;
+  color: var(--theme-text-secondary, #758390);
 }
 .rw-preserve-text {
   white-space: pre-wrap;
@@ -212,7 +212,7 @@
   align-items: center;
   gap: 14px;
   margin-top: 24px;
-  border-top: 1px solid #dce5ed;
+  border-top: 1px solid var(--theme-border, #dce5ed);
   padding-top: 15px;
 }
 .rw-history-heading h4 {
@@ -220,12 +220,12 @@
 }
 .rw-history-item {
   margin: 12px 0;
-  border-bottom: 1px solid #e3e9ef;
+  border-bottom: 1px solid var(--theme-border, #e3e9ef);
   padding: 12px 0;
 }
 .rw-history-item > div {
   padding: 12px 15px;
-  background: #f6f8fa;
+  background: var(--theme-surface-raised, #f6f8fa);
   margin-top: 10px;
   font-size: 12px;
   line-height: 1.8;

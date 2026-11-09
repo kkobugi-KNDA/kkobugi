@@ -10,7 +10,7 @@
 }
 .prediction-panel .section-heading p {
   font-size: 12px;
-  color: #657586;
+  color: var(--theme-text-secondary, #657586);
 }
 .prediction-controls {
   display: grid;
@@ -22,12 +22,12 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
-  color: #657586;
+  color: var(--theme-text-secondary, #657586);
   font-size: 12px;
   line-height: 1.7;
 }
 .prediction-hint a {
-  color: #285fa9;
+  color: var(--theme-primary, #285fa9);
 }
 .prediction-summary {
   display: flex;
@@ -36,22 +36,22 @@
   gap: 12px;
   margin: 16px 0 8px;
   font-size: 12px;
-  color: #697586;
+  color: var(--theme-text-secondary, #697586);
 }
 .prediction-summary > span:first-child {
   font-weight: 650;
-  color: #a64f25;
+  color: var(--theme-danger, #a64f25);
 }
 .prediction-summary i {
   display: inline-block;
   width: 8px;
   height: 8px;
   margin-right: 6px;
-  background: #c15c2c;
+  background: var(--theme-danger-fill, #c15c2c);
 }
 .prediction-points {
   margin-top: 20px;
-  border-top: 1px solid #e4e9ee;
+  border-top: 1px solid var(--theme-border, #e4e9ee);
   padding-top: 18px;
 }
 .prediction-points h3 {
@@ -60,7 +60,7 @@
 }
 .prediction-points p {
   font-size: 12px;
-  color: #657586;
+  color: var(--theme-text-secondary, #657586);
   overflow-wrap: anywhere;
 }
 .prediction-table-scroll {
@@ -77,36 +77,36 @@
 .prediction-table-scroll td {
   padding: 9px 12px;
   text-align: left;
-  border-bottom: 1px solid #e7ecf0;
+  border-bottom: 1px solid var(--theme-border, #e7ecf0);
   white-space: nowrap;
 }
 .prediction-table-scroll th {
   position: sticky;
   top: 0;
-  background: #f5f7f9;
-  color: #657586;
+  background: var(--theme-surface-raised, #f5f7f9);
+  color: var(--theme-text-secondary, #657586);
 }
 .prediction-positive {
-  color: #a44921;
+  color: var(--theme-danger, #a44921);
   font-weight: 650;
 }
 .rv-label-track.rv-prediction-track {
-  background: #fff6ef;
-  border-color: #ebd5c6;
+  background: var(--theme-warning-surface, #fff6ef);
+  border-color: var(--theme-warning-border, #ebd5c6);
 }
 .rv-label-track.rv-prediction-track > button {
-  background: #c56232;
-  border-color: #ad4b21;
+  background: var(--theme-danger-fill, #c56232);
+  border-color: var(--theme-danger-border, #ad4b21);
 }
 .rv-label-track.rv-prediction-track > button:hover {
-  background: #a84c22;
+  background: var(--theme-danger-fill, #a84c22);
 }
 .rv-prediction-dot,
 .rv-legend-orange {
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #c56232;
+  background: var(--theme-danger-fill, #c56232);
 }
 @media (max-width: 700px) {
   .prediction-controls {

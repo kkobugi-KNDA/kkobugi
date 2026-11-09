@@ -93,7 +93,14 @@ function Overlay({
               </button>
             </Dialog.Close>
           </header>
-          <div className="overlay-content">{children}</div>
+          <div
+            className="overlay-content"
+            role={drawer ? 'region' : undefined}
+            aria-label={drawer ? `${title} 내용` : undefined}
+            tabIndex={drawer ? 0 : undefined}
+          >
+            {children}
+          </div>
           {footer && <footer className="overlay-footer">{footer}</footer>}
         </Dialog.Content>
       </Dialog.Portal>
