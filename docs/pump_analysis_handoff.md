@@ -26,7 +26,10 @@
 | [06 분포와 고장 패턴](../notebooks/06_pump_sensor_eda.ipynb) | 센서별 정상·회복 분포, 실제 고장 7건, 같은 시각의 정상 대조군 |
 | [07 상관관계](../notebooks/07_pump_sensor_correlation.ipynb) | 센서 49개의 상태별 보간 전후 비교와 원본 52개 참고 히트맵 |
 | [08 시계열 피처](../notebooks/08_pump_rolling_features.ipynb) | 전방 채움 기반 변화량, 이동 통계, z-score와 단일 센서 경보 규칙 탐색 |
+| [09 검증 분할](../notebooks/09_pump_validation_split.ipynb) | 고장 사건 단위 전진 검증 폴드 6개 설계. 폴드별 학습·시험 구간과 행 수, 모델링 규칙 |
+| [10 선정 센서 시계열](../notebooks/10_pump_selected_sensor_timeseries.ipynb) | 센서 49개의 전체 기간 선형보간 값과 60분 이동평균, 고장·회복 구간 표시 (`figures/pump_selected_sensors/`) |
 | [피처 명세](feature_spec.json) | 피처 882개의 이름 규칙과 계산법, 탐색 결과 |
+| [분할 명세](validation_split.json) · [분할 코드](../src/pump_validation.py) · [그래프 글꼴](../src/plot_style.py) | 폴드 정의와 집계, 분할 계산 코드, 한글 글꼴 설정 |
 | [결측 점검 코드](../src/pump_missingness_audit.py) · [피처 계산 코드](../src/pump_features.py) · [실행 번호 초기화](../src/clear_execution_count.py) | 노트북에서 재사용하는 Python 코드 |
 
 [EDA 그래프 9개](../figures/pump_eda)와 [피처 탐색 그래프](../figures/pump_features)를 참고한다. `data/`는 Git에서 제외된다. 08의 피처 parquet가 필요하면 원본으로 08을 실행해 `data/processed/pump_features.parquet`를 생성한다. 커밋과 푸시는 사용자가 진행한다.
