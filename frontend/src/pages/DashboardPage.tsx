@@ -16,7 +16,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { Badge, EmptyState, PageHeader } from '../components/ui';
 import { number, dateTime } from '../lib/format';
-import { DEMO_RESULTS, demoSeries } from '../data/demo';
+import { demoSeries } from '../data/demo';
 
 const STATUS = { queued: '대기 중', running: '학습 중', completed: '학습 완료', failed: '실패' };
 function OverviewChart() {
@@ -216,7 +216,7 @@ export default function DashboardPage() {
           <p className="muted">
             각 단계의 근거를 남겨
             <br />
-            같은 조건으로 비교합니다.
+            학습부터 점검과 보고서까지 연결합니다.
           </p>
           <ol className="workflow-steps">
             {[
@@ -228,8 +228,8 @@ export default function DashboardPage() {
               },
               {
                 to: '/models',
-                title: '모델 비교',
-                desc: 'Train 학습 → Valid 순위',
+                title: '모델 학습',
+                desc: '모델 선택 → 자동 설정 → 학습',
                 done: completed.length > 0,
               },
               { to: '/review', title: '구간 확인', desc: '시계열과 현장 관찰 기록', done: false },
@@ -257,7 +257,7 @@ export default function DashboardPage() {
               <h2>최근 학습</h2>
             </div>
             <Link to="/models" className="text-link">
-              모델 비교
+              모델 학습
               <ArrowUpRight size={15} />
             </Link>
           </header>
@@ -300,54 +300,26 @@ export default function DashboardPage() {
             <EmptyState
               icon={FlaskConical}
               title="아직 학습 기록이 없어요"
-              description="데이터를 확인한 뒤 비교할 모델을 골라주세요."
+              description="데이터를 확인한 뒤 사용할 모델 하나를 골라주세요."
             />
           )}
         </section>
         <section className="surface validation-card">
           <header className="section-heading">
             <div>
-              <span className="eyebrow">MODEL COMPARISON</span>
-              <h2>Valid 결과</h2>
+              <span className="eyebrow">NEXT / MONITORING</span>
+              <h2>학습에서 점검으로</h2>
             </div>
-            {mode === 'demo' && <Badge>예시</Badge>}
           </header>
-          {mode === 'demo' ? (
-            <>
-              <div className="ranking-preview">
-                {DEMO_RESULTS.items.map((model, i) => (
-                  <div key={model.model_key}>
-                    <span className="rank-index">0{i + 1}</span>
-                    <div>
-                      <strong>{model.display_name}</strong>
-                      <div className="metric-track">
-                        <span style={{ width: `${(model.validation_metrics.f1 ?? 0) * 100}%` }} />
-                      </div>
-                    </div>
-                    <span>{model.validation_metrics.f1?.toFixed(3) ?? '—'}</span>
-                  </div>
-                ))}
-              </div>
-              <footer className="surface-footer">
-                <span>F1 기준 · 예시 결과</span>
-                <Link to="/models" className="icon-button" aria-label="모델 비교 열기">
-                  <ArrowRight size={17} />
-                </Link>
-              </footer>
-            </>
-          ) : (
-            <EmptyState
-              icon={ArrowDownRight}
-              title="비교 결과를 확인하세요"
-              description="완료한 학습을 선택하면 실제 Valid 지표를 볼 수 있습니다."
-              action={
-                <Link to="/models" className="text-link">
-                  모델 비교 열기
-                  <ArrowRight size={15} />
-                </Link>
-              }
-            />
-          )}
+          <EmptyState
+            title="학습한 모델로 실시간 신호를 확인하세요"
+            description="생성한 데이터를 차례로 재생하고, 점검 신호를 문헌·현장 관찰·비용·보고서로 연결합니다."
+            action={
+              <Link to="/monitor" className="button primary">
+                실시간 모니터링 <ArrowRight size={16} />
+              </Link>
+            }
+          />
         </section>
       </div>
     </div>

@@ -1,0 +1,337 @@
+.ax-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.ax-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ax-monitor-controls {
+  display: grid;
+  gap: 18px;
+}
+.ax-provenance {
+  color: #778598;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+.ax-monitor-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.8fr);
+  gap: 20px;
+}
+.ax-equipment {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+}
+.ax-equipment .pump-scene {
+  position: relative;
+  height: 240px;
+  width: 100%;
+  margin: 0;
+}
+.ax-equipment .pump-illustration {
+  width: 100%;
+  height: 100%;
+}
+.ax-equipment .scene-orbit {
+  display: none;
+}
+.ax-equipment-glow {
+  position: absolute;
+  inset: 50px 0 55px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 62% 54%, #ef384c80 0, #ed334438 36%, transparent 70%);
+  mix-blend-mode: multiply;
+  animation: ax-signal 2s ease-in-out infinite;
+}
+.ax-equipment.has-signal {
+  border-color: #d05d65;
+  box-shadow: inset 0 0 32px #e5576310;
+}
+.ax-equipment-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid #e4eaf1;
+  padding-top: 14px;
+}
+.ax-equipment-caption span {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.ax-equipment-caption small {
+  font-size: 11px;
+  color: #788698;
+}
+.ax-equipment p {
+  font-size: 11px;
+  color: #788698;
+  line-height: 1.7;
+}
+.ax-playback {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ax-playback select {
+  width: auto;
+  min-width: 100px;
+}
+.ax-live-chart {
+  position: relative;
+  min-height: 200px;
+  margin-top: 15px;
+}
+.ax-live-chart svg {
+  display: block;
+  width: 100%;
+}
+.ax-chart-await {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #8190a1;
+  font-size: 13px;
+}
+.ax-live-legend {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  color: #718096;
+  font-size: 11px;
+}
+.ax-live-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #2f6aab;
+  border-radius: 50%;
+}
+.ax-live-legend i:nth-of-type(2) {
+  background: #e34e53;
+}
+.ax-live-legend span {
+  margin-left: auto;
+}
+.ax-review-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.65fr) minmax(0, 1.4fr);
+  gap: 20px;
+  align-items: start;
+}
+.ax-signal-list {
+  max-height: 800px;
+  overflow: auto;
+}
+.ax-signal-list > button {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 10px;
+  border: 0;
+  border-bottom: 1px solid #e4eaf1;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+.ax-signal-list > button.selected {
+  background: #edf4fc;
+  box-shadow: inset 3px 0 #326aa9;
+}
+.ax-signal-list > button span,
+.ax-signal-list > button small {
+  color: #7a8798;
+  font-size: 11px;
+}
+.ax-signal-list > button strong {
+  color: #ba404d;
+  font-size: 13px;
+}
+.ax-assistant {
+  display: grid;
+  gap: 17px;
+  min-width: 0;
+}
+.ax-assistant h2 {
+  font-size: 17px;
+}
+.ax-assistant textarea {
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  line-height: 1.7;
+}
+.ax-question-form {
+  display: grid;
+  gap: 10px;
+}
+.ax-question-form > label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.ax-cost-inputs {
+  border-top: 1px solid #e3e9f1;
+  border-bottom: 1px solid #e3e9f1;
+  padding: 14px 0;
+}
+.ax-cost-inputs summary,
+.ax-reply summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ax-cost-inputs > p {
+  font-size: 12px;
+  color: #7b8798;
+  margin: 13px 0;
+}
+.ax-input-grid .input {
+  width: 100%;
+}
+.ax-reply {
+  border-top: 1px solid #e3e9f1;
+  padding-top: 18px;
+}
+.ax-source-badge {
+  color: #57748c;
+  font-size: 11px;
+}
+.ax-answer {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.ax-reply h3 {
+  font-size: 13px;
+  margin: 20px 0 10px;
+}
+.ax-reply li,
+.ax-reply details p {
+  font-size: 12px;
+  line-height: 1.9;
+}
+.ax-reply details {
+  margin-top: 20px;
+}
+.ax-cost-total {
+  padding: 17px;
+  background: #f2f6fa;
+  display: grid;
+  gap: 7px;
+}
+.ax-cost-total span {
+  font-size: 12px;
+  color: #66798d;
+}
+.ax-cost-total strong {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  color: #1d466e;
+}
+.ax-cost-total p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.ax-report-modal {
+  max-width: 900px;
+}
+.ax-report-paper {
+  padding: 8px 22px;
+}
+.ax-report-paper h2 {
+  margin: 15px 0 30px;
+}
+.ax-report-paper section {
+  margin-bottom: 25px;
+}
+.ax-report-paper h3 {
+  font-size: 15px;
+}
+.ax-report-paper p {
+  font-size: 13px;
+  line-height: 1.95;
+  white-space: pre-wrap;
+}
+.ax-report-list {
+  display: grid;
+}
+.ax-report-list button {
+  display: flex;
+  gap: 13px;
+  padding: 17px 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e4eaf1;
+  text-align: left;
+  align-items: center;
+  color: inherit;
+  cursor: pointer;
+}
+.ax-report-list button span {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6b8096;
+}
+.assistant-drawer .ax-assistant {
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+.assistant-drawer .ax-input-grid {
+  grid-template-columns: 1fr;
+}
+@keyframes ax-signal {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ax-equipment-glow {
+    animation: none;
+  }
+}
+@media (max-width: 1100px) {
+  .ax-monitor-grid {
+    grid-template-columns: 1fr;
+  }
+  .ax-equipment .pump-scene {
+    height: 200px;
+  }
+  .ax-review-grid {
+    grid-template-columns: 1fr;
+  }
+  .ax-signal-list {
+    max-height: 300px;
+  }
+}
+@media (max-width: 640px) {
+  .ax-input-grid {
+    grid-template-columns: 1fr;
+  }
+  .ax-report-paper {
+    padding: 0;
+  }
+  .ax-report-list button {
+    flex-wrap: wrap;
+  }
+  .ax-report-list button span {
+    margin-left: 30px;
+  }
+}

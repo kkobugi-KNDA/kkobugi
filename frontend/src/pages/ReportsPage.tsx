@@ -7,6 +7,7 @@ import { observationForDisplay, reviewApi, type SavedObservation } from '../lib/
 import { csvTime, number, percent } from '../lib/format';
 import { DEMO_RESULTS } from '../data/demo';
 import { Badge, EmptyState, Notice, PageHeader } from '../components/ui';
+import GeneratedReports from '../components/GeneratedReports';
 import { judgmentText, observationStorageKey, readObservationDrafts } from './ReviewPage';
 import type { Observation, RunResults } from '../types';
 import './review.css';
@@ -175,6 +176,7 @@ export default function ReportsPage() {
           인쇄 · PDF
         </button>
       </PageHeader>
+      <GeneratedReports />
       <Notice>
         {mode === 'live'
           ? '내 계정에 저장된 관찰을 불러옵니다. 다른 계정과 공유되지 않습니다.'

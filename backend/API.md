@@ -273,13 +273,29 @@ Test 근거는 선택 모델의 Test 평가가 완료된 뒤에만 연결한다.
 목록의 `status`는 `in_progress/completed`, `judgment`는 관찰과 같은 세 값을 사용한다.
 채널·시각 검색에는 `dataset_id`를 함께 지정한다. 모든 기록은 본인 계정에서만 조회·변경한다.
 
-## 다음 단계의 연결 단위
+## 학습에서 점검 보고서까지
 
-아래 기능은 아직 구현하지 않았다. CSV 등록 API와 별도로 이어서 개발한다.
+모든 경로 앞에 `/api/v1`을 붙인다. 기존 로그인 세션과 계정별 접근 범위를 유지한다.
 
-| Figma 기능 | API 연결 단위 |
+| 요청 | 역할 |
 | --- | --- |
-| RAG·보고서·문서 근거 | `/reports`, `/sources`: 실행 결과·관찰 기록·문서명·페이지·원문 |
+| `POST /training/plan` | 전처리한 CSV에서 단일 XGBoost·AutoEncoder 설정, 시간순 분할·라벨 분포 제안 |
+| `POST /runs`, `GET /runs/{id}` | 학습 시작, 실제 단계별 `training_progress`와 결과 조회 |
+| `POST /replays` | 전체 원본 또는 Test에서 최대 230,000행 합성 재생 CSV 생성 |
+| `GET /replays`, `GET /replays/{id}` | 생성 기록·원본 범위·출처 확인 |
+| `GET /replays/{id}/batch` | `cursor`, `limit`, `channel`로 요청한 행만 저장 모델로 추론 |
+| `GET /replays/{id}/file` | 생성 CSV 다운로드 |
+| `POST /assistant/messages`, `GET /assistant/messages/{id}` | 실제 모델 결과·학습 과정·현장 관찰·문헌·입력 비용을 고정해 저장 |
+| `POST /reports`, `GET /reports`, `GET /reports/{id}` | 저장한 답변으로 Word·PDF 생성, 상태·미리보기·목록 조회 |
+| `GET /reports/{id}/download.docx`, `GET /reports/{id}/download.pdf` | 작성 완료 파일 다운로드 |
+
+Pro 점수는 해당 평가 구간의 비정상 F1 × 100이며 고장 확률이 아니다. 계산 불가능하면 점수를 만들지 않는다.
+Pro+는 같은 결과를 상세 지표와 옵션으로 표시한다. 설명 방식은 권한을 바꾸지 않는다.
+학습 과정은 서버의 실제 시작·완료·실패 기록이다. 과거 실행에 없는 기록은 생성하지 않는다.
+
+재생은 실제 새 측정값·독립 성능 평가가 아니다. 전체 원본 재생에는 학습 구간이 포함된다.
+부품 원인·교체 필요·현재 단가는 모델 출력으로 확정하지 않는다. 비용은 확인한 입력값만 계산한다.
+외부 AI 키·모델을 서버 환경에 설정하지 않으면 문헌 검색 요약을 사용한다.
 
 구간은 픽셀이나 배열 번호로 저장하지 않는다. 모델 결과는 실행 ID로 연결하고,
 사람 판단·모델 라벨·검토 완료 상태는 합치지 않는다.

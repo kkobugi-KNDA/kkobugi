@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 실행한 폴더가 달라도 설정 파일과 DB를 같은 위치에서 찾는다.
@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "꼬부기 API"
+
+    # 외부 AI 연결은 서버 환경 변수로만 설정한다. 브라우저와 로그에 키를 보내지 않는다.
+    anthropic_api_key: SecretStr | None = None
+
+    anthropic_model: str = ""
+
+    # PDF에 한글을 포함할 글꼴. 배포 이미지에는 NanumGothic을 설치한다.
+    report_font_path: Path | None = None
 
     # 브라우저가 API를 호출할 수 있는 프런트엔드 주소다.
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]

@@ -11,8 +11,14 @@ from app.schemas.runs import ModelCatalog, ModelDefinition, ModelKey
 class NormalOnlyAutoencoder:
     """정상 Train의 재구성 오차를 기준으로 이상 후보를 분류한다."""
 
-    def __init__(self, random_seed: int):
+    def __init__(self, random_seed: int, *, max_iter=100, hidden_size=32, threshold_quantile=0.99):
         self.random_seed = random_seed
+
+        self.max_iter = max_iter
+
+        self.hidden_size = hidden_size
+
+        self.threshold_quantile = threshold_quantile
 
     def fit(self, features: np.ndarray, labels: np.ndarray):
         normal_features = features[labels == 0]
@@ -27,11 +33,15 @@ class NormalOnlyAutoencoder:
 
         self.n_features_in_ = features.shape[1]
 
-        self.hidden_layer_sizes_ = (32, min(8, max(1, self.n_features_in_ // 2)), 32)
+        self.hidden_layer_sizes_ = (
+            self.hidden_size,
+            min(8, max(1, self.n_features_in_ // 2)),
+            self.hidden_size,
+        )
 
         self.network_ = MLPRegressor(
             hidden_layer_sizes=self.hidden_layer_sizes_,
-            max_iter=100,
+            max_iter=self.max_iter,
             early_stopping=False,
             shuffle=False,
             random_state=self.random_seed,
@@ -43,8 +53,8 @@ class NormalOnlyAutoencoder:
         del reconstruction_target, normal_scaled
         normal_errors = self.decision_function(normal_features)
 
-        # Valid/Test를 보면서 기준을 바꾸지 않고 정상 Train의 99분위를 고정한다.
-        self.threshold_ = float(np.quantile(normal_errors, 0.99))
+        # Valid/Test를 보면서 기준을 바꾸지 않고 지정한 정상 Train 분위수를 고정한다.
+        self.threshold_ = float(np.quantile(normal_errors, self.threshold_quantile))
 
         return self
 
@@ -58,9 +68,7 @@ class NormalOnlyAutoencoder:
         for start in range(0, len(features), 4096):
             scaled = self.scaler_.transform(features[start : start + 4096])
             reconstructed = self.network_.predict(scaled).reshape(-1, self.n_features_in_)
-            errors[start : start + len(scaled)] = np.mean(
-                np.square(reconstructed - scaled), axis=1
-            )
+            errors[start : start + len(scaled)] = np.mean(np.square(reconstructed - scaled), axis=1)
         return errors
 
     def predict(self, features: np.ndarray) -> np.ndarray:
@@ -123,7 +131,9 @@ def get_model_catalog() -> ModelCatalog:
     )
 
 
-def create_estimator(model_key: ModelKey, random_seed: int):
+def create_estimator(model_key: ModelKey, random_seed: int, options: dict | None = None):
+    options = options or {}
+
     # 외부 모듈명이나 사용자가 올린 pickle은 실행하지 않는다.
     # 이전에 저장한 Dummy 실행을 검증하는 내부 호환 경로이며 새 목록에는 노출하지 않는다.
     if model_key == "dummy":
@@ -132,9 +142,9 @@ def create_estimator(model_key: ModelKey, random_seed: int):
         from xgboost import XGBClassifier
 
         return XGBClassifier(
-            n_estimators=100,
-            max_depth=4,
-            learning_rate=0.1,
+            n_estimators=options.get("n_estimators", 100),
+            max_depth=options.get("max_depth", 4),
+            learning_rate=options.get("learning_rate", 0.1),
             tree_method="hist",
             n_jobs=1,
             random_state=random_seed,
@@ -156,5 +166,5 @@ def create_estimator(model_key: ModelKey, random_seed: int):
             random_state=random_seed,
         )
     if model_key == "autoencoder":
-        return NormalOnlyAutoencoder(random_seed=random_seed)
+        return NormalOnlyAutoencoder(random_seed=random_seed, **options)
     raise ValueError("지원하는 모델을 선택하세요.")

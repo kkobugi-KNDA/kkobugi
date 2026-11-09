@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Navigate,
   NavLink,
@@ -30,7 +30,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  Send,
+  Radio,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -38,7 +38,10 @@ import { AppProvider, useApp, type ToastMessage } from './context/AppContext';
 import LoginPage, { Brand } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AssistantPet from './components/AssistantPet';
-import { Badge, Drawer, Notice } from './components/ui';
+import AxAssistantPanel from './components/AxAssistantPanel';
+import ExpertiseToggle from './components/ExpertiseToggle';
+import { ExpertiseProvider, useExpertise } from './context/ExpertiseContext';
+import { Badge, Drawer } from './components/ui';
 import { errorMessage } from './lib/api';
 
 const DataPage = lazy(() => import('./pages/DataPage'));
@@ -46,10 +49,12 @@ const ModelsPage = lazy(() => import('./pages/ModelsPage'));
 const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const CostsPage = lazy(() => import('./pages/CostsPage'));
+const MonitorPage = lazy(() => import('./pages/MonitorPage'));
 const NAV = [
   { to: '/', label: '작업실', icon: LayoutDashboard },
   { to: '/data', label: '데이터', icon: Database },
-  { to: '/models', label: '모델 비교', icon: FlaskConical },
+  { to: '/models', label: '모델 학습', icon: FlaskConical },
+  { to: '/monitor', label: '실시간 모니터링', icon: Radio },
   { to: '/review', label: '구간 확인', icon: ChartNoAxesCombined },
   { to: '/reports', label: '보고서', icon: FileText },
   { to: '/costs', label: '비용 비교', icon: Coins },
@@ -87,88 +92,29 @@ function Assistant({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { datasets, runs, mode } = useApp();
-  const [question, setQuestion] = useState(''),
-    [messages, setMessages] = useState<{ role: 'user' | 'guide'; text: string }[]>([]);
-  function ask(text: string) {
-    if (!text.trim()) return;
-    let answer =
-      '현재는 화면 사용 안내를 제공합니다. 도메인 문서를 검색하는 RAG 답변은 서버 연결 후 사용할 수 있어요. 점검한 사실은 구간 확인에서 기록해주세요.';
-    if (/모델|학습|비교/.test(text))
-      answer = `현재 학습 기록은 ${runs.length}건이에요. 모델 비교에서 입력 채널과 시간 경계를 정한 뒤 학습하세요. Valid 지표를 비교해 직접 모델을 고르고, Test 평가는 마지막에 실행합니다.`;
-    else if (/데이터|CSV|등록/.test(text))
-      answer = `등록된 데이터는 ${datasets.length}개예요. 데이터 메뉴에서 전처리한 CSV를 넣고 시간 열·라벨 열·Normal/UnNormal 값을 지정하세요. 원본 값을 자동으로 고치지 않습니다.`;
-    else if (/확대|그래프|구간/.test(text))
-      answer =
-        '구간 확인에서 채널을 선택하고 그래프를 드래그하세요. 선택 구간을 확대하거나 +/−로 보기 범위를 조정할 수 있어요. 확대 창에서도 기록한 구간과 현재 보기 범위는 구분됩니다.';
-    else if (/보고|비용|저장/.test(text))
-      answer =
-        (mode === 'live'
-          ? '관찰 기록은 내 계정의 서버 기록으로 저장됩니다. 작성과 수정 이력이 남고 다른 계정에는 공유되지 않아요.'
-          : '미리보기의 관찰 기록은 이 브라우저의 임시 초안으로 저장됩니다.') +
-        ' 보고서에서 모아서 출력할 수 있어요. 비용 비교는 직접 입력한 금액과 정지 시간을 계산하며, 실제 견적이나 AI 추정 비용이 아닙니다.';
-    setMessages((m) => [...m, { role: 'user', text }, { role: 'guide', text: answer }]);
-    setQuestion('');
-  }
+  const { runs, selectedRunId } = useApp();
+
+  const selectedRun = runs.find((run) => run.id === selectedRunId && run.status === 'completed');
+
   return (
     <Drawer
       open={open}
       onOpenChange={onOpenChange}
-      title="꼬부기와 함께"
-      description="화면 사용 안내"
+      title="점검 도우미"
+      description="학습 결과와 문헌 근거를 함께 확인해요."
       className="assistant-drawer"
     >
-      <div className="assistant-intro">
-        <span className="assistant-avatar">✦</span>
-        <h3>어디부터 시작할까요?</h3>
-        <p>
-          데이터 등록과 모델 비교 순서를
-          <br />
-          짧게 안내해드릴게요.
-        </p>
-      </div>
-      <Notice>도메인 RAG와 AI API는 아직 연결되지 않았어요.</Notice>
-      <div className="assistant-suggestions">
-        {['CSV는 어떻게 등록해?', '모델은 어떤 순서로 비교해?', '그래프 구간을 확대하려면?'].map(
-          (q) => (
-            <button key={q} onClick={() => ask(q)}>
-              {q}
-              <ArrowRight size={14} />
-            </button>
-          ),
-        )}
-      </div>
-      <div className="assistant-messages" aria-live="polite">
-        {messages.map((m, i) => (
-          <div key={i} className={`assistant-message ${m.role}`}>
-            <small>{m.role === 'guide' ? '화면 안내' : '나'}</small>
-            <p>{m.text}</p>
-          </div>
-        ))}
-      </div>
-      <form
-        className="assistant-composer"
-        onSubmit={(e: FormEvent) => {
-          e.preventDefault();
-          ask(question);
-        }}
-      >
-        <input
-          className="input"
-          aria-label="사용 방법 질문"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="사용 방법을 물어보세요"
-          maxLength={500}
-        />
-        <button className="button primary" aria-label="질문 보내기" disabled={!question.trim()}>
-          <Send size={17} />
-        </button>
-      </form>
+      <AxAssistantPanel
+        runId={selectedRun?.id || null}
+        modelKey={selectedRun?.selected_model || null}
+        split={selectedRun?.evaluation_status === 'completed' ? 'test' : 'validation'}
+      />
     </Drawer>
   );
 }
 function Shell() {
+  const { isExpert } = useExpertise();
+
   const { user, mode, logout, toast, runs } = useApp(),
     location = useLocation(),
     navigate = useNavigate();
@@ -318,6 +264,7 @@ function Shell() {
               <strong>{current.label}</strong>
             </div>
             <div className="topbar-actions">
+              <ExpertiseToggle />
               {mode === 'demo' && <Badge tone="amber">미리보기 · 예시 데이터</Badge>}
               <Dropdown.Root>
                 <Dropdown.Trigger asChild>
@@ -423,13 +370,15 @@ function Shell() {
               ],
               [
                 '02',
-                '모델 비교',
-                '입력 채널과 시간 경계를 정합니다. Train으로 학습하고 Valid 지표를 정렬해 비교하세요.',
+                '모델 학습',
+                isExpert
+                  ? '입력 채널과 시간 분할·모델 옵션을 확인하고 한 모델을 학습합니다.'
+                  : '사용할 AI 하나를 고르고 자동 설정을 확인한 뒤 학습하세요.',
               ],
               [
                 '03',
-                '직접 모델 선택',
-                '순위가 높은 모델이 자동으로 선택되지는 않습니다. 목적에 맞는 지표를 보고 모델을 선택한 뒤 Test를 평가하세요.',
+                '실시간 모니터링',
+                '학습한 모델의 최종 평가를 마치고 생성한 데이터를 재생하세요. 점검 신호와 직접 확인한 사실을 구분해 남깁니다.',
               ],
               [
                 '04',
@@ -476,6 +425,7 @@ function AuthenticatedRoutes() {
             <Route index element={<DashboardPage />} />
             <Route path="data" element={<DataPage />} />
             <Route path="models" element={<ModelsPage />} />
+            <Route path="monitor" element={<MonitorPage />} />
             <Route path="review" element={<ReviewPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="costs" element={<CostsPage />} />
@@ -493,8 +443,10 @@ function AuthenticatedRoutes() {
 }
 export default function App() {
   return (
-    <AppProvider>
-      <AuthenticatedRoutes />
-    </AppProvider>
+    <ExpertiseProvider>
+      <AppProvider>
+        <AuthenticatedRoutes />
+      </AppProvider>
+    </ExpertiseProvider>
   );
 }
