@@ -2,9 +2,9 @@
   display: inline-flex;
   gap: 3px;
   padding: 3px;
-  border: 1px solid var(--line, #dbe3ed);
+  border: 1px solid var(--line, var(--theme-border, #dbe3ed));
   border-radius: 8px;
-  background: var(--surface-subtle, #f3f6fa);
+  background: var(--surface-subtle, var(--theme-primary-surface, #f3f6fa));
 }
 .expertise-toggle button {
   min-width: 55px;
@@ -12,17 +12,17 @@
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: var(--muted, #61718a);
+  color: var(--muted, var(--theme-text-secondary, #61718a));
   font: inherit;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
 .expertise-toggle button[aria-pressed='true'] {
-  background: #174d7c;
-  color: white;
+  background: var(--theme-primary-fill, #174d7c);
+  color: var(--theme-on-accent, #ffffff);
 }
 .expertise-toggle button:focus-visible {
-  outline: 2px solid #2a83ce;
+  outline: 2px solid var(--theme-primary-border, #2a83ce);
   outline-offset: 2px;
 }

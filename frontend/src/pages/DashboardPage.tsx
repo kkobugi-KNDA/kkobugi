@@ -33,21 +33,21 @@ function OverviewChart() {
     >
       <defs>
         <linearGradient id="overview-area" x1="0" y1="0" x2="0" y2="1">
-          <stop stopColor="#417cc6" stopOpacity=".15" />
-          <stop offset="1" stopColor="#417cc6" stopOpacity="0" />
+          <stop stopColor="var(--theme-primary, #417cc6)" stopOpacity=".15" />
+          <stop offset="1" stopColor="var(--theme-primary, #417cc6)" stopOpacity="0" />
         </linearGradient>
       </defs>
       {[20, 60, 100, 140].map((y) => (
-        <line key={y} x1="0" x2="720" y1={y} y2={y} stroke="#e6ebf1" />
+        <line key={y} x1="0" x2="720" y1={y} y2={y} stroke="var(--theme-border, #e6ebf1)" />
       ))}
       <path d={`${path}L720 145H0Z`} fill="url(#overview-area)" />
-      <path d={path} fill="none" stroke="#407bc1" strokeWidth="2.1" />
+      <path d={path} fill="none" stroke="var(--theme-primary, #407bc1)" strokeWidth="2.1" />
       {[0, 120, 240, 359].map((i) => (
         <text
           key={i}
           x={(i / 359) * 720}
           y="159"
-          fill="#8090a4"
+          fill="var(--theme-text-muted, #8090a4)"
           fontSize="10"
           textAnchor={i === 0 ? 'start' : i === 359 ? 'end' : 'middle'}
         >

@@ -3,6 +3,7 @@ import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Play, UserRound } f
 import { useApp } from '../context/AppContext';
 import { errorMessage } from '../lib/api';
 import PumpScene from '../components/PumpScene';
+import ThemeToggle from '../components/ThemeToggle';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -41,7 +42,10 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-main">
-        <Brand />
+        <header className="login-header">
+          <Brand />
+          <ThemeToggle />
+        </header>
         <div className="login-form-wrap">
           <div className="eyebrow">
             <span className="tiny-rule" /> PUMP ANALYSIS WORKSPACE

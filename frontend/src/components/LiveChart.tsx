@@ -40,23 +40,41 @@ export default function LiveChart({ points, channel }: { points: ReplayPoint[]; 
               x2="965"
               y1={225 - fraction * 170}
               y2={225 - fraction * 170}
-              stroke="var(--border, #dfe6ef)"
+              stroke="var(--theme-border, var(--border, #dfe6ef))"
             />
-            <text x="55" y={230 - fraction * 170} textAnchor="end" fill="#718096" fontSize="12">
+            <text
+              x="55"
+              y={230 - fraction * 170}
+              textAnchor="end"
+              fill="var(--theme-text-muted, #718096)"
+              fontSize="12"
+            >
               {(minimum + span * fraction).toFixed(2)}
             </text>
           </g>
         ))}
-        <path d={path} stroke="#2f6aab" strokeWidth="2" fill="none" />
+        <path d={path} stroke="var(--theme-primary, #2f6aab)" strokeWidth="2" fill="none" />
         {finite
           .filter((point) => point.predicted_code === 1)
           .map((point) => (
-            <circle key={point.row_index} cx={x(point)} cy={y(point)} r="3" fill="#e34e53" />
+            <circle
+              key={point.row_index}
+              cx={x(point)}
+              cy={y(point)}
+              r="3"
+              fill="var(--theme-danger, #e34e53)"
+            />
           ))}
-        <text x="65" y="261" fontSize="12" fill="#718096">
+        <text x="65" y="261" fontSize="12" fill="var(--theme-text-muted, #718096)">
           {points[0]?.timestamp.replace('T', ' ').slice(0, 19)}
         </text>
-        <text x="965" y="261" textAnchor="end" fontSize="12" fill="#718096">
+        <text
+          x="965"
+          y="261"
+          textAnchor="end"
+          fontSize="12"
+          fill="var(--theme-text-muted, #718096)"
+        >
           {points.at(-1)?.timestamp.replace('T', ' ').slice(0, 19)}
         </text>
       </svg>

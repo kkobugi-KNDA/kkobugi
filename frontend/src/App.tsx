@@ -45,6 +45,8 @@ import { ASSISTANT_OPEN_EVENT, type AssistantOpenDetail } from './lib/assistant-
 import { useSimulationAssistant } from './lib/use-simulation-assistant';
 import type { SimulationChatContext } from './lib/chat-api';
 import ExpertiseToggle from './components/ExpertiseToggle';
+import ThemeToggle from './components/ThemeToggle';
+import { ThemeProvider } from './context/ThemeContext';
 import { ExpertiseProvider, useExpertise } from './context/ExpertiseContext';
 import { Badge, Drawer } from './components/ui';
 import { errorMessage } from './lib/api';
@@ -342,6 +344,7 @@ function Shell() {
               <strong>{current.label}</strong>
             </div>
             <div className="topbar-actions">
+              <ThemeToggle />
               <ExpertiseToggle />
               {mode === 'demo' && <Badge tone="amber">미리보기 · 예시 데이터</Badge>}
               <Dropdown.Root>
@@ -532,10 +535,12 @@ function AuthenticatedRoutes() {
 }
 export default function App() {
   return (
-    <ExpertiseProvider>
-      <AppProvider>
-        <AuthenticatedRoutes />
-      </AppProvider>
-    </ExpertiseProvider>
+    <ThemeProvider>
+      <ExpertiseProvider>
+        <AppProvider>
+          <AuthenticatedRoutes />
+        </AppProvider>
+      </ExpertiseProvider>
+    </ThemeProvider>
   );
 }
