@@ -19,7 +19,7 @@
     "2018-07-25 14:00:00"
   ],
   "features": {
-    "time_order": "모든 피처는 해당 시각 이전 값만 사용. 결측은 직전 관측값으로 전방 채움",
+    "time_order": "rolling·변화량·z-score는 해당 시각 이전 값만 사용. 센서 값은 05 최종 전처리 CSV(시간 기준 선형보간)",
     "sensors": [
       "sensor_00",
       "sensor_01",
@@ -73,7 +73,7 @@
     ],
     "raw": {
       "pattern": "{sensor}",
-      "description": "전방 채움한 원본 센서 값"
+      "description": "05 최종 전처리 CSV의 센서 값(선형보간)"
     },
     "rolling": {
       "pattern": "{sensor}__roll{window}_{stat}",
@@ -143,15 +143,15 @@
         "false_alarm_pct": 0.822,
         "false_alarm_episodes": 476
       },
-      "sensor_00": {
-        "hits_of_7": 6,
-        "false_alarm_pct": 1.064,
-        "false_alarm_episodes": 483
-      },
       "sensor_06": {
         "hits_of_7": 6,
-        "false_alarm_pct": 1.07,
+        "false_alarm_pct": 1.069,
         "false_alarm_episodes": 750
+      },
+      "sensor_00": {
+        "hits_of_7": 6,
+        "false_alarm_pct": 1.094,
+        "false_alarm_episodes": 487
       },
       "sensor_07": {
         "hits_of_7": 6,
