@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   prepareTraining: vi.fn(),
   api: {
     dataset: vi.fn(),
+    reinspectDataset: vi.fn(),
     run: vi.fn(),
     results: vi.fn(),
     createRun: vi.fn(),
@@ -40,6 +41,7 @@ function context(selectedRunId: string | null = null) {
     setSelectedDatasetId: vi.fn(),
     setSelectedRunId: vi.fn(),
     refreshRuns: vi.fn().mockResolvedValue(undefined),
+    refreshDatasets: vi.fn().mockResolvedValue(undefined),
     toast: vi.fn(),
   };
 }
@@ -85,6 +87,95 @@ beforeEach(() => {
 });
 
 describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
+  it('학습을 막은 열·개수를 보여주고 같은 원본을 다시 검사한 뒤 자동 설정한다', async () => {
+    const oldInspection = structuredClone(DEMO_DATASET_DETAIL);
+
+    oldInspection.dataset.status = 'needs_review';
+    oldInspection.dataset.channels.push('machine_status');
+    oldInspection.inspection.channels.push('machine_status');
+    oldInspection.inspection.columns.push('machine_status');
+    oldInspection.inspection.is_valid = false;
+    oldInspection.inspection.issues = [
+      {
+        code: 'INVALID_NUMERIC_VALUES',
+        column: 'machine_status',
+        count: 360,
+        severity: 'error',
+        message: '유한한 숫자로 읽을 수 없는 값이 있습니다.',
+      },
+    ];
+    const checked = structuredClone(oldInspection);
+
+    checked.dataset.status = 'valid';
+    checked.dataset.channels = checked.dataset.channels.filter((name) => name !== 'machine_status');
+    checked.inspection.channels = checked.inspection.channels.filter(
+      (name) => name !== 'machine_status',
+    );
+    checked.inspection.ignored_columns = ['machine_status'];
+    checked.inspection.is_valid = true;
+    checked.inspection.issues = [];
+    mocks.api.dataset.mockResolvedValue(oldInspection);
+    mocks.api.reinspectDataset.mockResolvedValue(checked);
+    const user = userEvent.setup();
+
+    mount();
+    const issues = await screen.findByRole('list', { name: 'CSV에서 확인할 항목' });
+
+    expect(issues).toHaveTextContent('machine_status · 360건');
+    expect(issues).toHaveTextContent('유한한 숫자로 읽을 수 없는 값');
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeDisabled();
+    expect(mocks.prepareTraining).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'CSV 다시 검사' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled());
+    expect(mocks.api.reinspectDataset).toHaveBeenCalledWith(
+      oldInspection.dataset.id,
+      expect.any(AbortSignal),
+    );
+    expect(mocks.prepareTraining.mock.calls[0][0].feature_columns).not.toContain('machine_status');
+    expect(screen.getByText(/학습 입력에서 제외한 상태 열: machine_status/)).toBeInTheDocument();
+    expect(mocks.api.createRun).not.toHaveBeenCalled();
+  });
+
+  it('예전 검사에서 숫자였어도 상태 열을 재검사하기 전에는 학습하지 않는다', async () => {
+    const previous = structuredClone(DEMO_DATASET_DETAIL);
+
+    previous.dataset.channels.push('all_sensors_missing');
+    previous.inspection.channels.push('all_sensors_missing');
+    mocks.api.dataset.mockResolvedValue(previous);
+    mount();
+    expect(await screen.findByRole('button', { name: 'CSV 다시 검사' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeDisabled();
+    expect(mocks.prepareTraining).not.toHaveBeenCalled();
+  });
+
+  it('CSV 재검사 실패는 원인을 남기고 기존 검사와 학습 중단 상태를 유지한다', async () => {
+    const invalid = structuredClone(DEMO_DATASET_DETAIL);
+
+    invalid.dataset.status = 'needs_review';
+    invalid.inspection.is_valid = false;
+    invalid.inspection.issues = [
+      {
+        code: 'MISSING_VALUES',
+        column: 'sensor_00',
+        count: 12,
+        severity: 'error',
+        message: '비어 있는 값이 있습니다.',
+      },
+    ];
+    mocks.api.dataset.mockResolvedValue(invalid);
+    mocks.api.reinspectDataset.mockRejectedValue(new Error('등록 당시와 CSV 내용이 다릅니다.'));
+    const user = userEvent.setup();
+
+    mount();
+    expect(await screen.findByRole('list', { name: 'CSV에서 확인할 항목' })).toHaveTextContent(
+      'sensor_00 · 12건',
+    );
+    await user.click(screen.getByRole('button', { name: 'CSV 다시 검사' }));
+    expect(await screen.findByText('등록 당시와 CSV 내용이 다릅니다.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeDisabled();
+    expect(mocks.prepareTraining).not.toHaveBeenCalled();
+  });
+
   it('CSV를 선택하면 버튼 클릭 없이 시간 경계를 채우고 학습 시작을 활성화한다', async () => {
     localStorage.setItem('kkobugi:expertise', 'pro-plus');
     mount();

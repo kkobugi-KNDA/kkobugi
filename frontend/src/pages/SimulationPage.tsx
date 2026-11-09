@@ -12,9 +12,13 @@ import {
   type SimulationManifest,
 } from '../lib/simulation-api';
 import { SIMULATION_PARTS } from '../lib/simulation-parts';
-import AxAssistantPanel from '../components/AxAssistantPanel';
+import {
+  openPetAssistant,
+  publishSimulationStatus,
+  type SimulationAssistantStatus,
+} from '../lib/assistant-events';
 import LiveChart from '../components/LiveChart';
-import { Drawer, Notice } from '../components/ui';
+import { Notice } from '../components/ui';
 import '../components/ax.css';
 import './simulation.css';
 
@@ -84,10 +88,6 @@ export default function SimulationPage() {
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
 
   const [partInputs, setPartInputs] = useState<Record<string, PartInputs>>({});
-
-  const [assistantOpen, setAssistantOpen] = useState(false);
-
-  const [savedSignal, setSavedSignal] = useState('');
 
   const [uploading, setUploading] = useState(false);
 
@@ -171,6 +171,54 @@ export default function SimulationPage() {
     };
   }, [showParts, selectedPartId, showGraph, viewMode]);
 
+  const simulationStatus = useMemo<SimulationAssistantStatus>(() => {
+    const activeSimulation = chosenRun && simulation?.run_id === chosenRun.id ? simulation : null;
+
+    const receivedRows = activeSimulation ? cursor : 0;
+
+    return {
+      ownerId: user?.id ?? -1,
+      runId: chosenRun?.id || null,
+      modelKey: chosenRun?.selected_model || null,
+      split: 'test',
+      contextKey: `simulation:${activeSimulation?.id || 'waiting'}`,
+      error: chosenRun ? error : undefined,
+      simulationContext: {
+        filename: activeSimulation?.filename,
+        status: !activeSimulation
+          ? 'waiting'
+          : receivedRows >= activeSimulation.total_rows
+            ? 'completed'
+            : playing
+              ? 'playing'
+              : receivedRows
+                ? 'paused'
+                : 'waiting',
+        cursor: receivedRows,
+        total_rows: activeSimulation?.total_rows || 0,
+        timestamp: activeSimulation ? latestPoint?.timestamp : undefined,
+        signal_count: activeSimulation ? signalCount : 0,
+        last_signal_time: activeSimulation ? lastSignal?.timestamp : undefined,
+      },
+    };
+  }, [
+    chosenRun,
+    simulation,
+    cursor,
+    playing,
+    user?.id,
+    error,
+    latestPoint,
+    signalCount,
+    lastSignal,
+  ]);
+
+  useEffect(() => {
+    publishSimulationStatus(mode === 'live' && user ? simulationStatus : null);
+  }, [simulationStatus, mode, user]);
+
+  useEffect(() => () => publishSimulationStatus(null), []);
+
   // 사용자가 선택한 학습이 준비되지 않았다면 임의의 다른 모델로 바꾸지 않는다.
   useEffect(() => {
     if (eligibleRuns.some((run) => run.id === runId)) return;
@@ -209,8 +257,6 @@ export default function SimulationPage() {
     setPendingSignal(false);
     setSignalCount(0);
     setLastSignal(null);
-    setAssistantOpen(false);
-    setSavedSignal('');
   }
 
   useEffect(() => {
@@ -355,10 +401,17 @@ export default function SimulationPage() {
         ? '정비 기준·누적 운전시간 미입력. 잔여수명 추정 불가.'
         : `사용자 입력 기준수명 ${currentPartInputs.expectedHours}시간 - 누적 운전시간 ${currentPartInputs.usedHours}시간 = 입력 기준 잔여 ${remainingHours}시간. 센서 기반 수명 예측이 아님.`;
 
-    setSavedSignal(
-      `업로드한 생성 CSV ${simulation?.filename || '미선택'}의 시뮬레이션. ${signal}. ${selectedPart?.label || '전체 펌프'}는 사용자가 확인 대상으로 선택했으며 모델이 고장 부위로 특정하지 않음. ${serviceLife}`,
-    );
-    setAssistantOpen(true);
+    const selectedSignal = `업로드한 생성 CSV ${simulation?.filename || '미선택'}의 시뮬레이션. ${signal}. ${selectedPart?.label || '전체 펌프'}는 사용자가 확인 대상으로 선택했으며 모델이 고장 부위로 특정하지 않음. ${serviceLife}`;
+
+    openPetAssistant({
+      runId: chosenRun?.id || null,
+      modelKey: chosenRun?.selected_model || null,
+      split: 'test',
+      selectedSignal,
+      suggestedCostInputs: suggestedCosts,
+      contextKey: `${simulation?.id || ''}:${selectedPartId || ''}`,
+      simulationContext: simulationStatus.simulationContext,
+    });
   }
 
   return (
@@ -694,21 +747,6 @@ export default function SimulationPage() {
           </section>
         )}
       </div>
-      <Drawer
-        open={assistantOpen}
-        onOpenChange={setAssistantOpen}
-        title="점검 안내·보고서"
-        description="현재 신호와 입력한 정비 기준·견적을 문헌과 함께 확인합니다."
-      >
-        <AxAssistantPanel
-          runId={chosenRun?.id || null}
-          modelKey={chosenRun?.selected_model || null}
-          split="test"
-          selectedSignal={savedSignal}
-          contextKey={`${simulation?.id || ''}:${selectedPartId || ''}`}
-          suggestedCostInputs={suggestedCosts}
-        />
-      </Drawer>
     </div>
   );
 }

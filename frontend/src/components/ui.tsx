@@ -74,9 +74,14 @@ function Overlay({
   className = '',
   drawer,
 }: OverlayProps & { drawer?: boolean }) {
+  const nativeDialog =
+    typeof document === 'undefined'
+      ? null
+      : document.querySelector<HTMLElement>('dialog.pet-chat-dialog[open]');
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
+      <Dialog.Portal container={nativeDialog || undefined}>
         <Dialog.Overlay className="dialog-backdrop" />
         <Dialog.Content
           className={`${drawer ? 'drawer' : 'modal'} ${className}`}

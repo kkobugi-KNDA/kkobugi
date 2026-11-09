@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.main import create_app
-from app.models import User
+from app.models import Dataset, User
 from app.security import hash_password
 
 FRONTEND_ORIGIN = "http://localhost:5173"
@@ -103,6 +103,7 @@ def test_every_dataset_endpoint_requires_login(dataset_client):
         dataset_client.get("/api/v1/datasets"),
         dataset_client.get("/api/v1/datasets/" + "a" * 32),
         dataset_client.get("/api/v1/datasets/" + "a" * 32 + "/file"),
+        dataset_client.post("/api/v1/datasets/" + "a" * 32 + "/reinspect", headers=WRITE_HEADERS),
     ]
 
     for response in responses:
@@ -180,6 +181,171 @@ def test_mapping_is_part_of_dataset_identity(dataset_client):
     assert first_response.json()["dataset"]["id"] != remapped_response.json()["dataset"]["id"]
     assert remapped_response.json()["dataset"]["status"] == "needs_review"
     assert remapped_response.json()["inspection"]["invalid_label_count"] == 3
+
+
+def test_reinspection_updates_only_derived_results_and_preserves_old_id(
+    dataset_client, dataset_settings
+):
+    source = (
+        b"timestamp,sensor_00,machine_status,label\n"
+        b"2026-01-01T00:00:00,1,NORMAL,normal\n"
+        b"2026-01-01T00:01:00,2,RECOVERING,abnormal\n"
+    )
+
+    uploaded = upload_csv(dataset_client, source).json()
+
+    dataset_id = uploaded["dataset"]["id"]
+
+    # 과거 버전이 상태 열을 숫자 채널로 오인했던 저장 결과를 재현한다.
+    with dataset_client.app.state.database.session_factory() as session:
+        dataset = session.get(Dataset, dataset_id)
+
+        previous = dict(dataset.inspection)
+
+        previous.pop("ignored_columns", None)
+        previous["channels"] = ["sensor_00", "machine_status"]
+        previous["invalid_numeric_counts"] = {"sensor_00": 0, "machine_status": 2}
+        previous["is_valid"] = False
+        previous["issues"] = [
+            {
+                "code": "INVALID_NUMERIC_VALUES",
+                "message": "숫자가 아닙니다.",
+                "column": "machine_status",
+                "count": 2,
+                "severity": "error",
+            }
+        ]
+        dataset.inspection = previous
+        session.commit()
+    assert (
+        dataset_client.get(f"/api/v1/datasets/{dataset_id}").json()["dataset"]["status"]
+        == "needs_review"
+    )
+    response = dataset_client.post(
+        f"/api/v1/datasets/{dataset_id}/reinspect", headers=WRITE_HEADERS
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+
+    assert result["dataset"]["id"] == dataset_id
+    assert result["dataset"]["sha256"] == uploaded["dataset"]["sha256"]
+    assert result["dataset"]["created_at"] == uploaded["dataset"]["created_at"]
+    assert result["dataset"]["status"] == "valid"
+    assert result["inspection"]["channels"] == ["sensor_00"]
+    assert result["inspection"]["ignored_columns"] == ["machine_status"]
+    assert dataset_client.get(f"/api/v1/datasets/{dataset_id}/file").content == source
+    assert dataset_client.get("/api/v1/datasets").json()["total"] == 1
+    assert (dataset_settings.dataset_storage_path / f"{dataset_id}.csv").read_bytes() == source
+
+
+def test_reinspection_requires_owner_and_trusted_write(dataset_client):
+    dataset_id = upload_csv(dataset_client).json()["dataset"]["id"]
+
+    route = f"/api/v1/datasets/{dataset_id}/reinspect"
+
+    assert dataset_client.post(route).status_code == 403
+    login_dataset_user(dataset_client, "bob")
+    assert dataset_client.post(route, headers=WRITE_HEADERS).status_code == 404
+
+
+def test_reinspection_rejects_changed_source_without_replacing_saved_inspection(
+    dataset_client, dataset_settings
+):
+    uploaded = upload_csv(dataset_client).json()
+
+    dataset_id = uploaded["dataset"]["id"]
+
+    stored = dataset_settings.dataset_storage_path / f"{dataset_id}.csv"
+
+    stored.write_bytes(VALID_CSV.replace(b"1.25", b"9.99"))
+    response = dataset_client.post(
+        f"/api/v1/datasets/{dataset_id}/reinspect", headers=WRITE_HEADERS
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DATASET_CHANGED"
+    assert (
+        dataset_client.get(f"/api/v1/datasets/{dataset_id}").json()["inspection"]
+        == uploaded["inspection"]
+    )
+
+
+def test_new_training_rejects_numeric_metadata_from_old_cached_inspection(dataset_client):
+    source = (
+        b"timestamp,sensor_00,machine_status,label\n"
+        b"2026-01-01T00:00:00,1,0,normal\n"
+        b"2026-01-01T00:01:00,2,1,abnormal\n"
+        b"2026-01-01T00:02:00,3,0,normal\n"
+    )
+
+    dataset_id = upload_csv(dataset_client, source).json()["dataset"]["id"]
+
+    with dataset_client.app.state.database.session_factory() as session:
+        dataset = session.get(Dataset, dataset_id)
+
+        previous = dict(dataset.inspection)
+
+        previous["channels"] = ["sensor_00", "machine_status"]
+        previous["ignored_columns"] = []
+        previous["invalid_numeric_counts"] = {"sensor_00": 0, "machine_status": 0}
+        dataset.inspection = previous
+        session.commit()
+    plan_response = dataset_client.post(
+        "/api/v1/training/plan",
+        headers=WRITE_HEADERS,
+        json={
+            "dataset_id": dataset_id,
+            "model_key": "xgboost",
+            "feature_columns": ["machine_status"],
+        },
+    )
+
+    run_response = dataset_client.post(
+        "/api/v1/runs",
+        headers=WRITE_HEADERS,
+        json={
+            "dataset_id": dataset_id,
+            "feature_columns": ["machine_status"],
+            "models": ["xgboost"],
+            "train_end": "2026-01-01T00:00:00",
+            "validation_end": "2026-01-01T00:01:00",
+        },
+    )
+
+    for response in [plan_response, run_response]:
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_FEATURES"
+    assert dataset_client.get("/api/v1/runs").json()["total"] == 0
+
+
+def test_reinspection_detects_change_during_scan(dataset_client, dataset_settings, monkeypatch):
+    from app.services import datasets as dataset_service
+
+    uploaded = upload_csv(dataset_client).json()
+
+    dataset_id = uploaded["dataset"]["id"]
+
+    stored = dataset_settings.dataset_storage_path / f"{dataset_id}.csv"
+
+    original_inspector = dataset_service.inspect_csv
+
+    def inspect_and_change(path, **options):
+        result = original_inspector(path, **options)
+
+        stored.write_bytes(VALID_CSV.replace(b"1.25", b"9.99"))
+        return result
+
+    monkeypatch.setattr(dataset_service, "inspect_csv", inspect_and_change)
+    response = dataset_client.post(
+        f"/api/v1/datasets/{dataset_id}/reinspect", headers=WRITE_HEADERS
+    )
+
+    assert response.status_code == 409
+    assert (
+        dataset_client.get(f"/api/v1/datasets/{dataset_id}").json()["inspection"]
+        == uploaded["inspection"]
+    )
 
 
 @pytest.mark.parametrize(

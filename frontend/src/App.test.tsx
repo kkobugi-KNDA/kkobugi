@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import App from './App';
+import App, { assistantDetailForPet } from './App';
+import type { AssistantOpenDetail } from './lib/assistant-events';
 const mocks = vi.hoisted(() => ({ login: vi.fn(), me: vi.fn(), logout: vi.fn() }));
 vi.mock('./lib/api', () => ({
   api: { ...mocks },
@@ -52,5 +53,46 @@ describe('workspace navigation and authentication boundaries', () => {
     expect(mocks.login).toHaveBeenCalledWith('worker', 'test-password');
     expect(screen.queryByRole('heading', { name: '분석 작업실' })).not.toBeInTheDocument();
     expect(sessionStorage.getItem('kkobugi:preview')).toBeNull();
+  });
+});
+
+describe('mascot conversation reopening', () => {
+  const partDetail: AssistantOpenDetail = {
+    contextKey: 'simulation-a:part-1',
+    runId: 'run-a',
+    modelKey: 'xgboost',
+    split: 'test',
+    selectedSignal: '베어링 점검',
+    suggestedCostInputs: { parts_cost: 120000 },
+  };
+
+  const currentStatus: AssistantOpenDetail = {
+    contextKey: 'simulation:simulation-a',
+    runId: 'run-a',
+    modelKey: 'xgboost',
+    split: 'test',
+  };
+
+  it('keeps the explicit part context when reopening the same simulation through the mascot', () => {
+    expect(assistantDetailForPet(partDetail, currentStatus)).toBe(partDetail);
+  });
+
+  it.each([
+    { contextKey: 'simulation:simulation-b' },
+    { runId: 'run-b' },
+    { modelKey: 'autoencoder' },
+    { split: 'validation' as const },
+  ])('uses the new context when simulation or model identity changes: %o', (changed) => {
+    const nextStatus = { ...currentStatus, ...changed };
+
+    expect(assistantDetailForPet(partDetail, nextStatus)).toBe(nextStatus);
+  });
+
+  it('does not restore an old part conversation after account context has been cleared', () => {
+    expect(assistantDetailForPet({}, currentStatus)).toBe(currentStatus);
+  });
+
+  it('clears simulation context when opening the mascot outside the simulation page', () => {
+    expect(assistantDetailForPet(partDetail, null)).toEqual({});
   });
 });

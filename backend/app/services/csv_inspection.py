@@ -10,6 +10,8 @@ from fastapi import HTTPException
 
 from app.schemas.datasets import CsvInspection, InspectionIssue
 
+METADATA_COLUMNS = frozenset({"machine_status", "all_sensors_missing"})
+
 
 def _invalid_csv(message: str) -> HTTPException:
     return HTTPException(status_code=422, detail={"code": "INVALID_CSV", "message": message})
@@ -30,7 +32,11 @@ def _validate_columns(
     if timestamp_column not in columns or label_column not in columns:
         raise _invalid_csv("선택한 시간 컬럼과 라벨 컬럼이 CSV에 모두 있어야 합니다.")
 
-    channels = [column for column in columns if column not in {timestamp_column, label_column}]
+    channels = [
+        column
+        for column in columns
+        if column not in {timestamp_column, label_column} and column not in METADATA_COLUMNS
+    ]
 
     if not channels:
         raise _invalid_csv("시간과 라벨 외에 숫자 채널이 한 개 이상 필요합니다.")
@@ -171,7 +177,7 @@ def _inspect_rows(
                 else:
                     invalid_label_count += 1
 
-            else:
+            elif column == timestamp_column:
                 try:
                     timestamp = datetime.fromisoformat(cell_value)
 
@@ -215,6 +221,12 @@ def _inspect_rows(
 
     issues: list[InspectionIssue] = []
 
+    ignored_columns = [
+        column
+        for column in columns
+        if column in METADATA_COLUMNS and column not in {timestamp_column, label_column}
+    ]
+
     for column, missing_count in missing_counts.items():
         if missing_count:
             issues.append(
@@ -223,6 +235,7 @@ def _inspect_rows(
                     message="비어 있는 값이 있습니다.",
                     column=column,
                     count=missing_count,
+                    severity="warning" if column in ignored_columns else "error",
                 )
             )
     for column, invalid_count in invalid_numeric_counts.items():
@@ -235,6 +248,16 @@ def _inspect_rows(
                     count=invalid_count,
                 )
             )
+
+    if ignored_columns:
+        issues.append(
+            InspectionIssue(
+                code="METADATA_EXCLUDED",
+                message="조업 상태·결측 표시 열은 원본에 보관하고 학습 입력에서 제외합니다.",
+                count=len(ignored_columns),
+                severity="warning",
+            )
+        )
 
     # 원본 행은 유지하고, 사용자가 고쳐야 할 항목과 개수만 정리한다.
     timestamp_checks = [
@@ -290,6 +313,7 @@ def _inspect_rows(
         column_count=len(columns),
         columns=columns,
         channels=channels,
+        ignored_columns=ignored_columns,
         timestamp_column=timestamp_column,
         label_column=label_column,
         time_start=earliest_timestamp.isoformat() if earliest_timestamp is not None else None,

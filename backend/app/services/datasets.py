@@ -244,6 +244,53 @@ def get_dataset(database_session: Session, dataset_id: str, owner_id: int) -> Da
     return dataset
 
 
+def _source_hash(file_path: Path) -> str:
+    digest = hashlib.sha256()
+
+    with file_path.open("rb") as source:
+        while chunk := source.read(_UPLOAD_CHUNK_BYTES):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def reinspect_dataset(
+    database_session: Session, dataset_id: str, owner_id: int, settings: Settings
+) -> DatasetDetail:
+    # 같은 ID와 원본을 유지하고, 사용자가 요청한 검사 결과만 새로 저장한다.
+    dataset = get_dataset(database_session, dataset_id, owner_id)
+
+    try:
+        file_path = dataset_file_path(dataset, settings)
+
+        if _source_hash(file_path) != dataset.sha256:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "DATASET_CHANGED", "message": "등록 당시와 CSV 내용이 다릅니다."},
+            )
+        inspection = inspect_csv(
+            file_path,
+            timestamp_column=dataset.timestamp_column,
+            label_column=dataset.label_column,
+            normal_label=dataset.normal_label,
+            abnormal_label=dataset.abnormal_label,
+            max_rows=settings.max_dataset_rows,
+            max_columns=settings.max_dataset_columns,
+        )
+
+        # 검사 중에 파일이 바뀌었다면 새 결과도 적용하지 않는다.
+        if _source_hash(file_path) != dataset.sha256:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "DATASET_CHANGED", "message": "검사 중 CSV 내용이 변경됐습니다."},
+            )
+        dataset.inspection = inspection.model_dump()
+        database_session.commit()
+    except (OSError, SQLAlchemyError):
+        database_session.rollback()
+        raise _storage_unavailable() from None
+    return dataset_detail(dataset)
+
+
 def _dataset_summary(dataset: Dataset, inspection: CsvInspection) -> DatasetSummary:
     return DatasetSummary(
         id=dataset.id,

@@ -36,6 +36,7 @@ export interface CsvInspection {
   column_count: number;
   columns: string[];
   channels: string[];
+  ignored_columns?: string[];
   timestamp_column: string;
   label_column: string;
   time_start: string | null;

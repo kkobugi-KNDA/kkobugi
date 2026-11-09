@@ -63,6 +63,11 @@ export const api = {
     request<Paginated<DatasetSummary>>('/datasets?limit=100', { signal }),
   dataset: (id: string, signal?: AbortSignal) =>
     request<DatasetDetail>(`/datasets/${encodeURIComponent(id)}`, { signal }),
+  reinspectDataset: (id: string, signal?: AbortSignal) =>
+    request<DatasetDetail>(`/datasets/${encodeURIComponent(id)}/reinspect`, {
+      method: 'POST',
+      signal,
+    }),
   upload: (form: FormData, signal?: AbortSignal) =>
     request<DatasetDetail>('/datasets', { method: 'POST', body: form, signal }),
   models: (signal?: AbortSignal) => request<{ items: ModelDefinition[] }>('/models', { signal }),

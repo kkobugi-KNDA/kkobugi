@@ -5,7 +5,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, X } from 'lucide-react';
 import './assistant-pet.css';
 
 type Animation = { row: number; frameCount: number; durationsMs: number[]; label: string };
@@ -62,9 +62,13 @@ export function clampPetPosition(point: Point, viewport: { width: number; height
 export default function AssistantPet({
   onOpen,
   working = false,
+  notice = '',
+  onDismissNotice,
 }: {
   onOpen: () => void;
   working?: boolean;
+  notice?: string;
+  onDismissNotice?: () => void;
 }) {
   const [atlas, setAtlas] = useState<Atlas | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -220,10 +224,31 @@ export default function AssistantPet({
       className={`assistant-pet ${dragDirection ? 'assistant-pet--dragging' : ''} ${placed ? 'assistant-pet--placed' : ''}`}
       style={{ left: position.x, top: position.y }}
     >
+      {notice && (
+        <div
+          className="assistant-pet-message"
+          role="status"
+          aria-live="polite"
+          style={position.x < 300 ? { left: 0, right: 'auto' } : undefined}
+        >
+          <strong>포석호 · 시뮬레이션 상태 확인</strong>
+          <p>{notice}</p>
+          <button className="assistant-pet-message-open" onClick={onOpen}>
+            자세히 이야기하기
+          </button>
+          <button
+            className="assistant-pet-message-close"
+            aria-label="시뮬레이션 안내 닫기"
+            onClick={onDismissNotice}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
       <button
         type="button"
         className="assistant-pet-button"
-        aria-label="꼬부기 도우미 열기. 드래그해서 위치를 바꿀 수 있습니다."
+        aria-label="포석호 점검 도우미 열기. 드래그해서 위치를 바꿀 수 있습니다."
         aria-haspopup="dialog"
         onPointerEnter={wave}
         onFocus={wave}
@@ -249,7 +274,7 @@ export default function AssistantPet({
           </span>
         )}
         <span className="assistant-pet-tooltip" aria-hidden="true">
-          {working ? '결과를 확인하고 있어요' : '꼬부기 도우미'}
+          {working ? '결과를 확인하고 있어요' : '포석호와 대화하기'}
         </span>
       </button>
     </div>
