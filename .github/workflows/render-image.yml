@@ -32,7 +32,7 @@ jobs:
     env:
       IMAGE_TAG: kkobugi-render-ci:${{ github.sha }}
       CONTAINER_NAME: kkobugi-render-smoke
-      CAPACITY_ARTIFACTS: ${{ runner.temp }}/kkobugi-capacity-results
+      CAPACITY_ARTIFACTS: capacity-results
 
     steps:
       - name: Checkout
