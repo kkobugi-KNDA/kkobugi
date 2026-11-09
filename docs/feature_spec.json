@@ -1,0 +1,182 @@
+{
+  "generated_by": "notebooks/08_pump_rolling_features.ipynb",
+  "source_rows": 220320,
+  "feature_count": 882,
+  "meta_columns": {
+    "timestamp": "원본 시각",
+    "machine_status": "원본 상태(특징에서 제외)",
+    "label": "0 = NORMAL, 1 = BROKEN·RECOVERING",
+    "state": "normal / pre_failure(고장 전 60분 NORMAL) / broken / recovering"
+  },
+  "failure_starts": [
+    "2018-04-12 21:55:00",
+    "2018-04-18 00:30:00",
+    "2018-05-19 03:18:00",
+    "2018-05-25 00:30:00",
+    "2018-06-28 22:00:00",
+    "2018-07-08 00:11:00",
+    "2018-07-25 14:00:00"
+  ],
+  "features": {
+    "time_order": "모든 피처는 해당 시각 이전 값만 사용. 결측은 직전 관측값으로 전방 채움",
+    "sensors": [
+      "sensor_00",
+      "sensor_01",
+      "sensor_02",
+      "sensor_03",
+      "sensor_04",
+      "sensor_05",
+      "sensor_06",
+      "sensor_07",
+      "sensor_08",
+      "sensor_09",
+      "sensor_10",
+      "sensor_11",
+      "sensor_12",
+      "sensor_13",
+      "sensor_14",
+      "sensor_16",
+      "sensor_17",
+      "sensor_18",
+      "sensor_19",
+      "sensor_20",
+      "sensor_21",
+      "sensor_22",
+      "sensor_23",
+      "sensor_24",
+      "sensor_25",
+      "sensor_26",
+      "sensor_27",
+      "sensor_28",
+      "sensor_29",
+      "sensor_30",
+      "sensor_31",
+      "sensor_32",
+      "sensor_33",
+      "sensor_34",
+      "sensor_35",
+      "sensor_36",
+      "sensor_37",
+      "sensor_38",
+      "sensor_39",
+      "sensor_40",
+      "sensor_41",
+      "sensor_42",
+      "sensor_43",
+      "sensor_44",
+      "sensor_45",
+      "sensor_46",
+      "sensor_47",
+      "sensor_48",
+      "sensor_49"
+    ],
+    "raw": {
+      "pattern": "{sensor}",
+      "description": "전방 채움한 원본 센서 값"
+    },
+    "rolling": {
+      "pattern": "{sensor}__roll{window}_{stat}",
+      "windows_minutes": [
+        15,
+        60,
+        360
+      ],
+      "stats": [
+        "mean",
+        "std",
+        "min",
+        "max"
+      ],
+      "description": "현재 시각에서 끝나는 window분 창의 통계. 창이 다 차기 전 NaN"
+    },
+    "diff": {
+      "pattern": "{sensor}__diff{lag}",
+      "lags_minutes": [
+        1,
+        5,
+        15,
+        60
+      ],
+      "description": "현재 값 − lag분 전 값. 앞부분 lag행은 NaN"
+    },
+    "zscore": {
+      "pattern": "{sensor}__z{window}",
+      "window_minutes": 360,
+      "description": "(현재 값 − 직전 window분 평균) / 직전 window분 표준편차. 표준편차 0이면 0"
+    }
+  },
+  "precursor_check": {
+    "baseline_window": "고장 24~6시간 전",
+    "recent_window": "고장 전 60분",
+    "level_threshold": 3.0,
+    "volatility_threshold": 3.0,
+    "top_sensors": {
+      "sensor_00": 5,
+      "sensor_06": 4,
+      "sensor_04": 4,
+      "sensor_13": 3,
+      "sensor_43": 3,
+      "sensor_07": 2,
+      "sensor_09": 2,
+      "sensor_12": 2,
+      "sensor_40": 2,
+      "sensor_02": 2
+    }
+  },
+  "zscore_rule": {
+    "threshold": 4.0,
+    "lead_hours": 6,
+    "top_sensors": {
+      "sensor_04": {
+        "hits_of_7": 7,
+        "false_alarm_pct": 0.131,
+        "false_alarm_episodes": 93
+      },
+      "sensor_12": {
+        "hits_of_7": 6,
+        "false_alarm_pct": 0.528,
+        "false_alarm_episodes": 130
+      },
+      "sensor_14": {
+        "hits_of_7": 6,
+        "false_alarm_pct": 0.822,
+        "false_alarm_episodes": 476
+      },
+      "sensor_00": {
+        "hits_of_7": 6,
+        "false_alarm_pct": 1.064,
+        "false_alarm_episodes": 483
+      },
+      "sensor_06": {
+        "hits_of_7": 6,
+        "false_alarm_pct": 1.07,
+        "false_alarm_episodes": 750
+      },
+      "sensor_07": {
+        "hits_of_7": 6,
+        "false_alarm_pct": 1.4,
+        "false_alarm_episodes": 749
+      },
+      "sensor_02": {
+        "hits_of_7": 5,
+        "false_alarm_pct": 0.208,
+        "false_alarm_episodes": 272
+      },
+      "sensor_10": {
+        "hits_of_7": 5,
+        "false_alarm_pct": 0.308,
+        "false_alarm_episodes": 164
+      },
+      "sensor_27": {
+        "hits_of_7": 5,
+        "false_alarm_pct": 0.535,
+        "false_alarm_episodes": 625
+      },
+      "sensor_19": {
+        "hits_of_7": 5,
+        "false_alarm_pct": 0.611,
+        "false_alarm_episodes": 522
+      }
+    }
+  }
+}
