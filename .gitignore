@@ -1,0 +1,57 @@
+# 환경 변수와 키
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python / Jupyter
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# React / Node.js
+node_modules/
+dist/
+coverage/
+
+# 로컬 데이터
+/data/raw/
+/data/processed/
+archive.zip
+sensor.csv
+prepared.csv
+pump_sensor_without_sensor15.csv
+
+# 재생성 가능한 모델과 실행 파일
+*.joblib
+*.pkl
+.runtime/
+*.log
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+/outputs/pump-deploy/
+/outputs/eaf-studio-review/
+
+# macOS 자동 생성 파일
+.DS_Store
+.AppleDouble/
+.LSOverride
+._*
+__MACOSX/
+
+# Windows 자동 생성 파일
+Thumbs.db
