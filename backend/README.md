@@ -42,6 +42,12 @@ uv run python -m app.cli create-user --username minho --display-name 박민호
 보호할 API에는 `Depends(app.api.auth.get_current_user)`를 연결한다.
 
 운영 시 `KKOBUGI_ENVIRONMENT=production`, `KKOBUGI_COOKIE_SECURE=true`로 설정한다.
+
+Render에서는 루트 `Dockerfile`로 프런트 빌드와 API를 함께 실행한다. 프런트 API 주소는
+`/api/v1`이며, `KKOBUGI_FRONTEND_DIST_PATH`로 지정한 빌드 폴더만 공개한다.
+`KKOBUGI_TRUSTED_ORIGINS`에는 실제 접속 주소를 JSON 배열로 지정한다.
+계정 DB·업로드 CSV·학습 모델은 `/var/data/kkobugi` 영구 디스크에 보관한다.
+기존 자료는 이미지나 Git에 넣지 않고 백업본으로 이전한다. API 프로세스는 하나로 실행한다.
 프런트엔드 주소는 `KKOBUGI_CORS_ORIGINS`에 지정한다. 같은 출처 프록시 주소는
 `KKOBUGI_TRUSTED_ORIGINS`에도 지정할 수 있다. Vercel → Render는 같은 출처의 `/api` 프록시를
 사용할 예정이며, DB 경로는 영구 디스크에 둬야 한다. 배포는 아직 포함하지 않았다.

@@ -18,6 +18,7 @@ from app.api.series import router as series_router
 from app.config import Settings
 from app.db import Database
 from app.errors import register_error_handlers
+from app.frontend import FrontendFiles
 from app.middleware import BrowserSecurityMiddleware, UploadSizeLimitMiddleware
 from app.services.runs import RunManager
 
@@ -86,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(series_router)
     application.include_router(observations_router)
     application.include_router(reviews_router)
+    if settings.frontend_dist_path is not None:
+        application.mount("/", FrontendFiles(settings.frontend_dist_path), name="frontend")
     return application
 
 

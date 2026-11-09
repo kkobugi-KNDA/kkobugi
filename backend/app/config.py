@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # 학습한 모델은 서버가 만든 파일만 이 폴더에서 읽는다.
     model_storage_path: Path = BACKEND_DIR / ".runtime" / "models"
 
+    # 배포할 때만 프런트 빌드 폴더를 지정한다. 개발 API는 기존대로 단독 실행한다.
+    frontend_dist_path: Path | None = None
+
     # 한 번에 한 모델 작업을 실행하고, 나머지는 제한된 대기열에 둔다.
     max_pending_runs: int = Field(default=8, ge=1, le=100)
 
@@ -98,6 +101,16 @@ class Settings(BaseSettings):
             local_path = BACKEND_DIR / local_path
 
         return local_path.resolve()
+
+    @field_validator("frontend_dist_path")
+    @classmethod
+    def resolve_frontend_path(cls, frontend_path: Path | None) -> Path | None:
+        if frontend_path is None:
+            return None
+        frontend_path = frontend_path.expanduser()
+        if not frontend_path.is_absolute():
+            frontend_path = BACKEND_DIR / frontend_path
+        return frontend_path.resolve()
 
     @model_validator(mode="after")
     def require_secure_cookie(self) -> "Settings":

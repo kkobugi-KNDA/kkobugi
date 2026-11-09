@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: kkobugi
+    runtime: docker
+    region: singapore
+    branch: namelesspark7
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: 1c-2g
+    numInstances: 1
+    healthCheckPath: /api/v1/health
+    disk:
+      name: kkobugi-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: KKOBUGI_ENVIRONMENT
+        value: production
+      - key: KKOBUGI_COOKIE_SECURE
+        value: "true"
+      - key: KKOBUGI_CORS_ORIGINS
+        value: "[]"
+      - key: KKOBUGI_TRUSTED_ORIGINS
+        sync: false
