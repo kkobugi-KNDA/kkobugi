@@ -104,3 +104,39 @@ class Dataset(Base):
 
     # 검사 결과를 함께 저장해 서버를 다시 켜도 동일한 내용을 보여준다.
     inspection: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class ModelRun(Base):
+    """학습과 최종 평가 상태를 분리해 저장한다. Test 결과로 모델을 다시 고르지 않는다."""
+
+    __tablename__ = "model_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
+
+    status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
+
+    configuration: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    input_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    training_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    selected_model: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    evaluation_status: Mapped[str] = mapped_column(
+        String(24), default="not_started", nullable=False
+    )
+
+    evaluation_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    evaluation_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    created_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    updated_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)

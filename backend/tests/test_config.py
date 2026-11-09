@@ -35,6 +35,16 @@ def test_relative_upload_path_does_not_depend_on_working_directory(tmp_path, mon
     assert settings.dataset_storage_path == expected_storage_path
 
 
+def test_relative_model_path_does_not_depend_on_working_directory(tmp_path, monkeypatch):
+    # 이미 학습한 모델은 실행한 폴더와 관계없이 같은 위치에서 다시 찾는다.
+    expected_model_path = Path(__file__).resolve().parents[1] / ".runtime" / "models"
+
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(_env_file=None, model_storage_path=Path(".runtime/models"))
+
+    assert settings.model_storage_path == expected_model_path
+
+
 @pytest.mark.parametrize("field", ["cors_origins", "trusted_origins"])
 @pytest.mark.parametrize(
     "origin",

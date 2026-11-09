@@ -20,7 +20,9 @@ class BrowserSecurityMiddleware:
 
         request_path = scope["path"]
 
-        is_private_request = request_path.startswith(("/api/v1/auth", "/api/v1/datasets"))
+        is_private_request = request_path.startswith(
+            ("/api/v1/auth", "/api/v1/datasets", "/api/v1/models", "/api/v1/runs")
+        )
 
         async def send_without_private_cache(message: Message) -> None:
             # 계정과 CSV 응답은 성공·실패 모두 브라우저나 프록시에 저장하지 않는다.

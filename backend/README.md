@@ -24,6 +24,7 @@ uv run python -m app.cli create-user --username minho --display-name 박민호
 - 비밀번호: 12~128자, Argon2id 해시로 저장
 - DB: `backend/.runtime/kkobugi.sqlite3`. 실행 위치가 바뀌어도 같은 파일을 사용
 - 업로드 CSV: `backend/.runtime/datasets`. 원본은 그대로 두고 검사 결과를 DB에 저장
+- 학습 모델: `backend/.runtime/models`. 입력·분할·특징 순서와 패키지 버전을 함께 저장
 
 | API | 동작 |
 | --- | --- |
@@ -44,3 +45,7 @@ uv run python -m app.cli create-user --username minho --display-name 박민호
 프런트엔드 주소는 `KKOBUGI_CORS_ORIGINS`에 지정한다. 같은 출처 프록시 주소는
 `KKOBUGI_TRUSTED_ORIGINS`에도 지정할 수 있다. Vercel → Render는 같은 출처의 `/api` 프록시를
 사용할 예정이며, DB 경로는 영구 디스크에 둬야 한다. 배포는 아직 포함하지 않았다.
+
+모델 비교는 `GET /api/v1/models` → `POST /api/v1/runs` → Valid 결과 비교 → 사용자 선택 → Test 평가 순서다.
+시간 분할 경계는 사용자가 직접 지정한다. 이 로컬 실행은 API 프로세스 하나에서 작업을 차례로 처리한다.
+입력과 실행 예시는 [API.md](API.md)를 따른다.
