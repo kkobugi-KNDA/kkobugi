@@ -19,6 +19,7 @@ dependencies:
 
   # Machine Learning
   - py-xgboost
+  - lightgbm
   - imbalanced-learn
   - shap
   - joblib
