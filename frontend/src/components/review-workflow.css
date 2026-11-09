@@ -1,0 +1,248 @@
+.rw-panel {
+  padding: 24px 28px;
+}
+.rw-panel > .section-heading {
+  margin-bottom: 18px;
+}
+.rw-panel h2 {
+  font-size: 15px;
+}
+.rw-panel h4,
+.rw-modal h4 {
+  font-size: 13px;
+  margin: 22px 0 10px;
+}
+.rw-panel .section-heading p,
+.rw-hint {
+  color: #758390;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.rw-hint {
+  margin: 10px 0 16px;
+}
+.rw-actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rw-record-list {
+  display: grid;
+}
+.rw-record {
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-bottom: 1px solid #e3e9ef;
+  padding: 18px 0;
+  cursor: pointer;
+}
+.rw-record:hover {
+  background: #f7fafc;
+}
+.rw-record > div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: #758390;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+.rw-record > strong {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.rw-record > small {
+  display: block;
+  margin-top: 8px;
+  color: #758390;
+  line-height: 1.6;
+}
+.rw-modal {
+  width: min(880px, calc(100vw - 32px));
+}
+.rw-modal .field {
+  margin-bottom: 18px;
+}
+.rw-modal textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  border: 1px solid #dce4eb;
+  background: #fff;
+  color: #243847;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.7;
+}
+.rw-modal textarea:disabled {
+  background: #f6f8fa;
+  color: #4b5f70;
+}
+.rw-context {
+  font-size: 12px;
+  color: #607384;
+  line-height: 1.8;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e3e9ef;
+}
+.rw-checkbox,
+.rw-observation-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+}
+.rw-checkbox input,
+.rw-observation-choice input {
+  margin-top: 3px;
+  accent-color: #3272ce;
+}
+.rw-observation-choice {
+  border-bottom: 1px solid #e3e9ef;
+  padding: 12px 0;
+  cursor: pointer;
+}
+.rw-observation-choice span {
+  min-width: 0;
+}
+.rw-observation-choice strong {
+  font-weight: 500;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.rw-observation-choice small {
+  display: block;
+  margin-top: 5px;
+  color: #758390;
+  line-height: 1.7;
+}
+.rw-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #758390;
+}
+.rw-evidence {
+  margin: 20px 0;
+  border-top: 1px solid #dce5ed;
+  padding-top: 2px;
+}
+.rw-evidence-editor {
+  border: 1px solid #dce5ed;
+  margin: 20px 0;
+  padding: 16px;
+  min-width: 0;
+}
+.rw-evidence-editor legend {
+  font-size: 13px;
+  padding: 0 6px;
+}
+.rw-evidence-editor .rw-checkbox {
+  margin-top: 12px;
+}
+.rw-evidence p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #607384;
+}
+.rw-model-evidence > strong,
+.rw-observation-evidence > strong {
+  font-size: 13px;
+}
+.rw-metrics {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin: 15px 0;
+}
+.rw-metrics dt {
+  font-size: 11px;
+  color: #758390;
+}
+.rw-metrics dd {
+  margin: 7px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+.rw-evidence summary,
+.rw-history-item summary {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.rw-identifiers {
+  font-size: 11px;
+  line-height: 1.8;
+  padding: 10px 0;
+}
+.rw-identifiers dt {
+  color: #758390;
+  margin-top: 8px;
+}
+.rw-identifiers dd {
+  margin: 3px 0;
+  word-break: break-all;
+}
+.rw-observation-evidence {
+  padding: 15px 0;
+  border-bottom: 1px solid #e3e9ef;
+}
+.rw-observation-evidence > span {
+  font-size: 11px;
+  color: #758390;
+}
+.rw-preserve-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rw-reopen {
+  padding-top: 10px;
+}
+.rw-history-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+  border-top: 1px solid #dce5ed;
+  padding-top: 15px;
+}
+.rw-history-heading h4 {
+  margin: 0;
+}
+.rw-history-item {
+  margin: 12px 0;
+  border-bottom: 1px solid #e3e9ef;
+  padding: 12px 0;
+}
+.rw-history-item > div {
+  padding: 12px 15px;
+  background: #f6f8fa;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+@media (max-width: 720px) {
+  .rw-panel {
+    padding: 20px 16px;
+  }
+  .rw-panel > .section-heading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .rw-metrics {
+    gap: 18px;
+  }
+  .rw-history-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

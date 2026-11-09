@@ -16,6 +16,10 @@ interface Props {
   labelIntervals?: SelectedRange[];
   labelIntervalsTruncated?: boolean;
   labelStatus?: string;
+  predictionIntervals?: SelectedRange[];
+  predictionLabel?: string;
+  predictionStatus?: string;
+  predictionIntervalsTruncated?: boolean;
 }
 type Domain = [number, number];
 const W = 1000,
@@ -132,6 +136,10 @@ export default function TimeSeriesChart({
   labelIntervals,
   labelIntervalsTruncated = false,
   labelStatus,
+  predictionIntervals = [],
+  predictionLabel,
+  predictionStatus,
+  predictionIntervalsTruncated = false,
 }: Props) {
   const [domain, setDomain] = useState<Domain | null>(null),
     [expanded, setExpanded] = useState(false);
@@ -454,6 +462,53 @@ export default function TimeSeriesChart({
           </span>
         )}
       </div>
+      {(predictionLabel || predictionStatus) && (
+        <>
+          <div className="rv-label-caption">
+            <span className="rv-prediction-dot" />
+            모델 예측 1 · {predictionLabel}
+            <span>고장 확정 아님</span>
+          </div>
+          <div
+            className="rv-label-track rv-prediction-track"
+            aria-label="모델 예측 구간"
+            style={{ marginLeft: `${(LEFT / W) * 100}%`, marginRight: `${(RIGHT / W) * 100}%` }}
+          >
+            {predictionIntervals.map((group, index) => {
+              const start = Math.max(view[0], group.start.time);
+
+              const end = Math.min(view[1], group.end.time);
+
+              if (end < start) return null;
+              return (
+                <button
+                  key={index}
+                  title={`${group.start.timestamp.replace('T', ' ')} ~ ${group.end.timestamp.replace('T', ' ')} · 눌러서 확대`}
+                  aria-label={`모델 예측 1 구간 ${group.start.timestamp}부터 ${group.end.timestamp} 확대`}
+                  style={{
+                    left: `${((start - view[0]) / (view[1] - view[0])) * 100}%`,
+                    width: `${Math.max(0, ((end - start) / (view[1] - view[0])) * 100)}%`,
+                  }}
+                  onClick={() => focusRange(group)}
+                />
+              );
+            })}
+            {!predictionIntervals.length && (
+              <span className="rv-no-label">
+                {predictionStatus
+                  ? '예측 구간 조회 상태를 아래에서 확인해주세요.'
+                  : '해당 분할에 모델 예측 1 구간이 없습니다.'}
+              </span>
+            )}
+          </div>
+          {predictionStatus && <p className="rv-sampling-note">{predictionStatus}</p>}
+          {predictionIntervalsTruncated && (
+            <p className="rv-sampling-note">
+              불러온 예측 구간만 표시했어요. 예측 결과에서 더 불러올 수 있습니다.
+            </p>
+          )}
+        </>
+      )}
       <div className="rv-chart-legend">
         <span>
           <i className="rv-legend-yellow" />
@@ -463,6 +518,12 @@ export default function TimeSeriesChart({
           <i className="rv-legend-purple" />
           CSV에 기록된 라벨
         </span>
+        {(predictionLabel || predictionStatus) && (
+          <span>
+            <i className="rv-legend-orange" />
+            모델 예측
+          </span>
+        )}
         <span>시간은 CSV 표기 기준</span>
       </div>
       {labelIntervalsTruncated && (
