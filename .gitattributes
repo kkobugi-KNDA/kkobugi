@@ -1,0 +1,7 @@
+# Windows·macOS·Linux 어디서 저장해도 같은 줄바꿈(LF)으로 기록합니다.
+* text=auto eol=lf
+
+# 이미지와 압축 파일은 줄바꿈 변환 없이 그대로 다룹니다.
+*.png binary
+*.jpg binary
+*.zip binary

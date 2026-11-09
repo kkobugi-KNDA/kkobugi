@@ -1,22 +1,54 @@
+
 name: kkobugi
+
 channels:
   - conda-forge
   - nodefaults
+
 dependencies:
-  - python=3.12
+  # Python
+  - python=3.14
   - pip
-  - ipykernel
+
+  # Data Analysis
   - numpy
   - pandas
-  - matplotlib-base
-  - pyarrow
+  - scipy
   - scikit-learn
-  - lightgbm=4.6
-  - pytorch=*=cpu*
-  - py-xgboost=*=cpu*
+  - pyarrow
+
+  # Machine Learning
+  - py-xgboost
+  - lightgbm
+  - imbalanced-learn
   - shap
-  - faiss-cpu
+  - joblib
+
+  # Deep Learning - Autoencoder
+  - pytorch
+
+  # Visualization
+  - matplotlib
+  - seaborn
+  - plotly
+
+  # Notebook
+  - jupyterlab
+  - ipykernel
+
+  # Service / Utilities
   - streamlit
+  - pydantic
+  - python-dotenv
+  - tqdm
+
+  # LLM / RAG
   - pip:
-      - langchain>=1,<2
-      - langchain-openai>=1,<2
+      - openai
+      - langchain
+      - langchain-openai
+      - langchain-community
+      - langchain-text-splitters
+      - langgraph
+      - faiss-cpu
+      - pypdf
