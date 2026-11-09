@@ -7,7 +7,7 @@ services:
     autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: 1c-2g
+    plan: 0.5c-512mb
     numInstances: 1
     healthCheckPath: /api/v1/health
     disk:
