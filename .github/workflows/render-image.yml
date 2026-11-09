@@ -3,7 +3,7 @@ name: Render image (512 MB)
 "on":
   workflow_dispatch:
   push:
-    branches: [namelesspark7]
+    branches: [main]
     paths:
       - Dockerfile
       - .dockerignore
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   smoke:
-    if: github.ref == 'refs/heads/namelesspark7'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:

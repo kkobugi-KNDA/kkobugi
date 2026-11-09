@@ -49,8 +49,8 @@
   pointer-events: none;
   background: radial-gradient(
     ellipse at 62% 54%,
-    rgba(var(--theme-shadow-rgb, 239, 56, 76), 0.502) 0,
-    rgba(var(--theme-shadow-rgb, 237, 51, 68), 0.2196) 36%,
+    rgba(239, 56, 76, 0.502) 0,
+    rgba(237, 51, 68, 0.2196) 36%,
     transparent 70%
   );
   mix-blend-mode: multiply;
@@ -58,7 +58,7 @@
 }
 .ax-equipment.has-signal {
   border-color: var(--theme-danger-border, #d05d65);
-  box-shadow: inset 0 0 32px rgba(var(--theme-shadow-rgb, 229, 87, 99), 0.0627);
+  box-shadow: inset 0 0 32px rgba(229, 87, 99, 0.0627);
 }
 .ax-equipment-caption {
   display: flex;
