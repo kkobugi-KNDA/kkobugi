@@ -27,6 +27,7 @@ class BrowserSecurityMiddleware:
                 "/api/v1/models",
                 "/api/v1/runs",
                 "/api/v1/observations",
+                "/api/v1/reviews",
             )
         )
 
