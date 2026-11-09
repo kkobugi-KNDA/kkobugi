@@ -23,6 +23,7 @@ export interface ChatConversationProps {
   selectedSignal?: string;
   suggestedCostInputs?: AssistantCostInput;
   contextKey?: string;
+  initialQuestion?: string;
 }
 
 interface ChatEntry extends ChatHistoryMessage {
@@ -51,6 +52,7 @@ export default function ChatConversation({
   selectedSignal = '',
   suggestedCostInputs,
   contextKey = '',
+  initialQuestion = '',
 }: ChatConversationProps) {
   const { user, mode } = useApp();
 
@@ -84,16 +86,24 @@ export default function ChatConversation({
 
   const transcriptRef = useRef<HTMLDivElement>(null);
 
+  const accountContext = useRef({ userId: user?.id, mode });
+
   const suggestedCostsKey = JSON.stringify(suggestedCostInputs || {});
 
   // 창을 닫는 동작은 대화를 지우지 않는다. 계정이나 실제 근거가 바뀔 때만 정리한다.
   useEffect(() => {
+    const accountChanged =
+      accountContext.current.userId !== user?.id || accountContext.current.mode !== mode;
+
+    accountContext.current = { userId: user?.id, mode };
     generation.current += 1;
     requestController.current?.abort();
     for (const controller of reportControllers.current) controller.abort();
     reportControllers.current.clear();
     setMessages([]);
-    setQuestion('');
+    // 새 문맥의 추천 질문은 초안일 뿐이다. 사용자가 전송하기 전에는 API를 호출하지 않는다.
+    // 계정 전환 시에는 이전 화면의 추천 질문도 가져오지 않는다.
+    setQuestion(accountChanged ? '' : initialQuestion.trim().slice(0, 3000));
     setPendingQuestion('');
     setObservation('');
     setCostInputs({});
@@ -106,6 +116,7 @@ export default function ChatConversation({
       for (const controller of reportControllers.current) controller.abort();
       reportControllers.current.clear();
     };
+    // 추천 질문만 바뀌거나 같은 문맥을 다시 열 때 작성 중인 질문과 대화를 덮어쓰지 않는다.
   }, [user?.id, mode, runId, modelKey, split, contextKey]);
 
   useEffect(() => {

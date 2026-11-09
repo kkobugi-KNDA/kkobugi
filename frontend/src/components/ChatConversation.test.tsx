@@ -178,6 +178,62 @@ describe('포석호의 대화형 점검 도우미', () => {
     expect(screen.getByText(reply().answer)).toBeInTheDocument();
   });
 
+  it('경고에서 넘어온 질문은 초안에만 채우고 사용자가 보내기 전에는 전송하지 않는다', async () => {
+    render(
+      chat({
+        contextKey: 'training:dataset-a:validation-warning',
+        initialQuestion: '  중간 확인 구간에 비정상이 없다는 뜻이 뭐야?  ',
+      }),
+    );
+    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue(
+      '중간 확인 구간에 비정상이 없다는 뜻이 뭐야?',
+    );
+    expect(mocks.sendChat).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '메시지 보내기' }));
+    await act(async () => {});
+    expect(mocks.sendChat.mock.calls[0][0].question).toBe(
+      '중간 확인 구간에 비정상이 없다는 뜻이 뭐야?',
+    );
+  });
+
+  it('같은 경고 문맥을 다시 열어도 이전 대화와 사용자가 고친 초안을 유지한다', async () => {
+    const view = render(chat({ contextKey: 'training:same', initialQuestion: '처음 추천 질문' }));
+
+    await send('이 경고를 확인하고 있어.');
+    fireEvent.change(screen.getByRole('textbox', { name: '포석호에게 질문' }), {
+      target: { value: '내가 직접 작성 중인 다음 질문' },
+    });
+    view.rerender(chat({ contextKey: 'training:same', initialQuestion: '다시 전달된 추천 질문' }));
+    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue(
+      '내가 직접 작성 중인 다음 질문',
+    );
+    expect(screen.getByText('이 경고를 확인하고 있어.')).toBeInTheDocument();
+    expect(screen.getByText(reply().answer)).toBeInTheDocument();
+    expect(mocks.sendChat).toHaveBeenCalledOnce();
+  });
+
+  it('새 경고 문맥으로 바뀌면 기존 격리를 유지하며 새 질문만 초안에 채운다', async () => {
+    const view = render(chat({ contextKey: 'training:first', initialQuestion: '첫 경고 질문' }));
+
+    await send('첫 문맥의 질문');
+    view.rerender(chat({ contextKey: 'training:second', initialQuestion: '새 경고 질문' }));
+    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue('새 경고 질문');
+    expect(screen.queryByText('첫 문맥의 질문')).not.toBeInTheDocument();
+    expect(screen.queryByText(reply().answer)).not.toBeInTheDocument();
+    expect(mocks.sendChat).toHaveBeenCalledOnce();
+  });
+
+  it('다른 계정으로 바뀌면 이전 계정의 추천 질문도 남기지 않는다', () => {
+    const props = { contextKey: 'training:same', initialQuestion: '이전 계정의 경고 내용' };
+
+    const view = render(chat(props));
+
+    mocks.useApp.mockReturnValue({ mode: 'live', user: { id: 2, username: 'other' } });
+    view.rerender(chat(props));
+    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue('');
+    expect(mocks.sendChat).not.toHaveBeenCalled();
+  });
+
   it('빈 견적은 보내지 않고 사용자가 명시한 0원은 그대로 보낸다', async () => {
     render(chat());
     fireEvent.click(screen.getByText('현장 관찰·견적 / 비용 조건 입력'));

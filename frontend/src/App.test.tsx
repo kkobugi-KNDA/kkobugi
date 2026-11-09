@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import App, { assistantDetailForPet } from './App';
-import type { AssistantOpenDetail } from './lib/assistant-events';
+import { ASSISTANT_OPEN_EVENT, type AssistantOpenDetail } from './lib/assistant-events';
 const mocks = vi.hoisted(() => ({ login: vi.fn(), me: vi.fn(), logout: vi.fn() }));
 vi.mock('./lib/api', () => ({
   api: { ...mocks },
@@ -10,6 +11,13 @@ vi.mock('./lib/api', () => ({
 }));
 vi.mock('./components/AssistantPet', () => ({
   default: ({ onOpen }: { onOpen: () => void }) => <button onClick={onOpen}>도우미 열기</button>,
+}));
+vi.mock('./components/LoginVideo', () => ({
+  default: () => <div aria-label="로그인 펌프 영상" />,
+}));
+vi.mock('./components/PetChatModal', () => ({
+  default: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <section aria-label="열린 포석호 대화">{children}</section> : null,
 }));
 vi.mock('./pages/SimulationPage', () => ({
   default: () => <h1>시뮬레이션 화면</h1>,
@@ -28,6 +36,31 @@ beforeEach(() => {
   mocks.login.mockReset();
 });
 describe('workspace navigation and authentication boundaries', () => {
+  it('passes a warning event question into the mascot conversation draft', async () => {
+    sessionStorage.setItem('kkobugi:preview', '1');
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('link', { name: '작업실' });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent<AssistantOpenDetail>(ASSISTANT_OPEN_EVENT, {
+          detail: {
+            runId: null,
+            modelKey: null,
+            contextKey: 'training:warning',
+            initialQuestion: '최종 확인 구간에 비정상이 없으면 어떻게 해?',
+          },
+        }),
+      );
+    });
+    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue(
+      '최종 확인 구간에 비정상이 없으면 어떻게 해?',
+    );
+  });
+
   it('redirects the old monitor address to simulation and keeps only one navigation item', async () => {
     sessionStorage.setItem('kkobugi:preview', '1');
     render(

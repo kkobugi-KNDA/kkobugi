@@ -7,6 +7,7 @@ import ExpertiseToggle from '../components/ExpertiseToggle';
 import { ExpertiseProvider } from '../context/ExpertiseContext';
 import { DEMO_DATASET_DETAIL, DEMO_EVALUATION, DEMO_RESULTS, DEMO_RUN_DETAIL } from '../data/demo';
 import type { RunDetail, TrainingProgressEvent } from '../types';
+import { ASSISTANT_OPEN_EVENT } from '../lib/assistant-events';
 
 const mocks = vi.hoisted(() => ({
   useApp: vi.fn(),
@@ -87,6 +88,41 @@ beforeEach(() => {
 });
 
 describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
+  it('분할 안내에서 질문을 열 때 과거 모델 대신 현재 CSV의 분포를 연결한다', async () => {
+    mocks.prepareTraining.mockResolvedValue({
+      ...plan(),
+      label_counts: {
+        train: { normal: 200, abnormal: 10 },
+        validation: { normal: 70, abnormal: 10 },
+        test: { normal: 70, abnormal: 0 },
+      },
+      warnings: ['Test 구간에 비정상 기록이 없어 F1을 계산할 수 없습니다.'],
+    });
+    const receive = vi.fn();
+
+    const user = userEvent.setup();
+
+    window.addEventListener(ASSISTANT_OPEN_EVENT, receive);
+    try {
+      mount();
+      const guide = await screen.findByRole('complementary', { name: '학습 전에 함께 확인해요' });
+
+      expect(guide).toHaveTextContent('최종 확인 구간에 이상 기록이 0행이에요.');
+      await user.click(within(guide).getByRole('button', { name: '포석호에게 물어보기' }));
+      expect(receive).toHaveBeenCalledOnce();
+      expect(receive.mock.calls[0][0].detail).toMatchObject({
+        runId: null,
+        modelKey: null,
+        selectedSignal: expect.stringContaining('test: 정상 70행, 이상 0행'),
+        initialQuestion: expect.stringContaining('시간 순서를 지키면서'),
+      });
+      expect(mocks.api.createRun).not.toHaveBeenCalled();
+      expect(mocks.api.evaluate).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(ASSISTANT_OPEN_EVENT, receive);
+    }
+  });
+
   it('학습을 막은 열·개수를 보여주고 같은 원본을 다시 검사한 뒤 자동 설정한다', async () => {
     const oldInspection = structuredClone(DEMO_DATASET_DETAIL);
 
@@ -667,6 +703,22 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
         'href',
         '#training-settings',
       );
+      const receive = vi.fn();
+
+      window.addEventListener(ASSISTANT_OPEN_EVENT, receive);
+      try {
+        const guide = screen.getByRole('complementary', { name: '결과를 함께 읽어볼까요?' });
+
+        fireEvent.click(within(guide).getByRole('button', { name: '포석호에게 물어보기' }));
+        expect(receive.mock.calls[0][0].detail).toMatchObject({
+          runId: run.run.id,
+          modelKey: 'xgboost',
+          split: 'test',
+          selectedSignal: expect.stringContaining('pump-source.csv / Test 33,048행'),
+        });
+      } finally {
+        window.removeEventListener(ASSISTANT_OPEN_EVENT, receive);
+      }
       if (expertise === 'pro-plus') {
         expect(screen.getByText('1.000')).toBeInTheDocument();
         expect(screen.getAllByText('평가 근거 부족')).toHaveLength(5);

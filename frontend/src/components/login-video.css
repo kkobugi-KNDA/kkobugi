@@ -1,0 +1,116 @@
+.login-page .login-video-panel {
+  background: #071115;
+  border-color: #20323d;
+  box-shadow: none;
+}
+
+.login-video-panel .visual-topline,
+.login-video-panel .visual-index,
+.login-video-panel .visual-bottom p {
+  color: #9ab0c1;
+}
+
+.login-video-panel .visual-bottom {
+  border-color: #253c49;
+}
+
+.login-video-panel .visual-bottom strong {
+  color: #d5e4ee;
+}
+
+.login-video-panel .visual-index {
+  border-color: #344e60;
+}
+
+.login-video {
+  position: relative;
+  width: 100%;
+  margin: auto 0;
+  aspect-ratio: 16 / 9;
+  min-height: 180px;
+  max-height: calc(100dvh - 230px);
+}
+
+.login-video video,
+.login-video-poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.login-video-controls {
+  position: absolute;
+  inset: auto 20px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.login-video-controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  color: #e1eef7;
+  background: #0b1d2be6;
+  border: 1px solid #56758a;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.login-video-controls button:hover {
+  background: #183748;
+}
+
+.login-video-controls button:focus-visible {
+  outline: 2px solid #98ceef;
+  outline-offset: 3px;
+}
+
+.login-video-controls p {
+  margin: 0;
+  max-width: 290px;
+  color: #d5e4ee;
+  font-size: 10px;
+  line-height: 1.7;
+  text-shadow: 0 1px 3px #000;
+}
+
+@media (max-width: 700px) {
+  .login-page-with-video .login-main {
+    min-height: auto;
+  }
+
+  .login-page .login-video-panel {
+    display: flex;
+    margin: 0 16px 16px;
+    min-height: 0;
+  }
+
+  .login-video {
+    max-height: none;
+    min-height: 0;
+  }
+
+  .login-video-panel .visual-topline {
+    padding: 18px 20px;
+    font-size: 7px;
+    letter-spacing: 1px;
+  }
+
+  .login-video-panel .visual-bottom {
+    margin: 20px;
+    padding-top: 18px;
+  }
+
+  .login-video-controls {
+    inset: auto 12px 6px;
+  }
+
+  .login-video-controls p {
+    font-size: 9px;
+  }
+}

@@ -13,6 +13,7 @@ export interface AssistantOpenDetail {
   suggestedCostInputs?: AssistantCostInput;
   contextKey?: string;
   simulationContext?: SimulationChatContext | null;
+  initialQuestion?: string;
 }
 
 export interface SimulationAssistantStatus extends AssistantOpenDetail {
