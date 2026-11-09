@@ -21,6 +21,7 @@ from app.model_catalog import create_estimator, get_model_catalog
 from app.schemas.runs import (
     ClassMetrics,
     EvaluationMetrics,
+    ModelDefinition,
     ModelKey,
     ModelResult,
     RunCreate,
@@ -42,9 +43,9 @@ def _file_sha256(file_path: Path) -> str:
     return file_hasher.hexdigest()
 
 
-def _environment_versions() -> dict[str, str]:
-    # 저장한 모델은 같은 실행 환경에서만 다시 읽는다.
-    return {
+def _environment_versions(*, include_lightgbm: bool = False) -> dict[str, str]:
+    # 기존 모델에는 없던 패키지 키를 강제로 추가하면 정상 파일도 불일치가 된다.
+    environment = {
         "python": platform.python_version(),
         "scikit_learn": version("scikit-learn"),
         "numpy": version("numpy"),
@@ -55,9 +56,14 @@ def _environment_versions() -> dict[str, str]:
         "threadpoolctl": version("threadpoolctl"),
     }
 
+    if include_lightgbm:
+        environment["lightgbm"] = version("lightgbm")
+
+    return environment
+
 
 def _artifact_path(artifact_directory: Path, model_key: ModelKey) -> Path:
-    if model_key not in {"dummy", "xgboost", "autoencoder"}:
+    if model_key not in {"dummy", "xgboost", "lightgbm", "autoencoder"}:
         raise ValueError("지원하는 모델을 선택하세요.")
 
     artifact_path = (artifact_directory / f"{model_key}.joblib").resolve()
@@ -256,10 +262,12 @@ def train_models(
     # 모든 선택 모델의 전제조건을 먼저 확인해, 잘못된 실행에 모델 파일을 남기지 않는다.
     if "xgboost" in config.models and len(np.unique(train_labels)) != 2:
         raise ValueError("XGBoost 학습에는 Train의 정상·이상 라벨이 모두 필요합니다.")
+    if "lightgbm" in config.models and len(np.unique(train_labels)) != 2:
+        raise ValueError("LightGBM 학습에는 Train의 정상·이상 라벨이 모두 필요합니다.")
     if "autoencoder" in config.models and int((train_labels == 0).sum()) < 2:
         raise ValueError("AutoEncoder 학습에는 Train의 정상 표본이 두 개 이상 필요합니다.")
 
-    environment = _environment_versions()
+    environment = _environment_versions(include_lightgbm="lightgbm" in config.models)
 
     metadata = {
         "configuration": config.model_dump(mode="json"),
@@ -276,6 +284,17 @@ def train_models(
         raise ValueError("모델을 저장할 새 실행 폴더가 필요합니다.")
 
     catalog = {definition.key: definition for definition in get_model_catalog().items}
+
+    # 이전 버전의 파일을 재현하는 내부 검증에서만 Dummy 설정을 사용한다.
+    # 새 API 학습 요청은 NewRunCreate와 RunManager에서 이미 거절한다.
+    if "dummy" in config.models:
+        catalog["dummy"] = ModelDefinition(
+            key="dummy",
+            display_name="DummyClassifier",
+            kind="baseline",
+            description="이전 버전에 저장된 다수 라벨 기준 모델",
+            parameters={"strategy": "most_frequent", "random_state": config.random_seed},
+        )
 
     model_results = []
 
@@ -348,6 +367,63 @@ def train_models(
     }
 
 
+def load_trained_model(
+    file_path: Path,
+    config: RunCreate,
+    *,
+    normal_label: str,
+    abnormal_label: str,
+    expected_sha256: str,
+    artifact_directory: Path,
+    model_key: ModelKey,
+    expected_artifact_sha256: str,
+    timestamp_column: str = "timestamp",
+    label_column: str = "label",
+) -> object:
+    """원본·설정·버전·모델 해시를 확인한 뒤 서버가 저장한 모델만 읽는다."""
+
+    if model_key not in config.models:
+        raise ValueError("이 실행에서 학습한 모델을 선택하세요.")
+    if _file_sha256(file_path) != expected_sha256:
+        raise ValueError("등록 당시와 CSV 내용이 다릅니다. 원본을 다시 확인하세요.")
+
+    metadata_path = artifact_directory / "metadata.json"
+
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    except (OSError, ValueError):
+        raise ValueError("저장된 모델의 실행 정보를 확인할 수 없습니다.") from None
+
+    if not isinstance(metadata, dict) or not isinstance(metadata.get("environment"), dict):
+        raise ValueError("저장된 모델의 실행 정보 형식을 확인하세요.")
+
+    expected_metadata = {
+        "configuration": config.model_dump(mode="json"),
+        "input_sha256": expected_sha256,
+        "timestamp_column": timestamp_column,
+        "label_column": label_column,
+        "normal_label": normal_label,
+        "abnormal_label": abnormal_label,
+        "environment": _environment_versions(
+            include_lightgbm="lightgbm" in metadata.get("environment", {})
+        ),
+    }
+
+    if model_key == "lightgbm" and "lightgbm" not in metadata.get("environment", {}):
+        raise ValueError("LightGBM 학습 당시의 패키지 버전을 확인할 수 없습니다.")
+    if metadata != expected_metadata:
+        raise ValueError("학습 당시의 모델 설정·데이터·패키지 버전과 일치하지 않습니다.")
+
+    artifact_path = _artifact_path(artifact_directory, model_key)
+
+    if _file_sha256(artifact_path) != expected_artifact_sha256:
+        raise ValueError("저장된 모델 파일의 내용이 변경됐습니다.")
+
+    # 검증 전에는 joblib을 읽지 않는다. 사용자 업로드 모델도 받지 않는다.
+    return joblib.load(artifact_path)
+
+
 def evaluate_model(
     file_path: Path,
     config: RunCreate,
@@ -361,34 +437,6 @@ def evaluate_model(
     timestamp_column: str = "timestamp",
     label_column: str = "label",
 ) -> EvaluationMetrics:
-    if model_key not in config.models:
-        raise ValueError("이 실행에서 학습한 모델을 선택하세요.")
-
-    metadata_path = artifact_directory / "metadata.json"
-
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-
-    except (OSError, ValueError):
-        raise ValueError("저장된 모델의 실행 정보를 확인할 수 없습니다.") from None
-
-    expected_metadata = {
-        "configuration": config.model_dump(mode="json"),
-        "input_sha256": expected_sha256,
-        "timestamp_column": timestamp_column,
-        "label_column": label_column,
-        "normal_label": normal_label,
-        "abnormal_label": abnormal_label,
-        "environment": _environment_versions(),
-    }
-
-    if metadata != expected_metadata:
-        raise ValueError("학습 당시의 모델 설정·데이터·패키지 버전과 일치하지 않습니다.")
-
-    artifact_path = _artifact_path(artifact_directory, model_key)
-
-    if _file_sha256(artifact_path) != expected_artifact_sha256:
-        raise ValueError("저장된 모델 파일의 내용이 변경됐습니다.")
 
     features, labels, split = _read_dataset(
         file_path,
@@ -401,7 +449,18 @@ def evaluate_model(
     )
 
     # 학습·재학습 없이 이미 고른 모델로 Test만 예측한다.
-    estimator = joblib.load(artifact_path)
+    estimator = load_trained_model(
+        file_path,
+        config,
+        normal_label=normal_label,
+        abnormal_label=abnormal_label,
+        expected_sha256=expected_sha256,
+        artifact_directory=artifact_directory,
+        model_key=model_key,
+        expected_artifact_sha256=expected_artifact_sha256,
+        timestamp_column=timestamp_column,
+        label_column=label_column,
+    )
 
     test_features = features[split.test.start_row : split.test.end_row]
 

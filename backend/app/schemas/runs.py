@@ -5,7 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-ModelKey = Literal["dummy", "xgboost", "autoencoder"]
+# 과거 Dummy 실행도 읽을 수 있도록 저장된 기록의 키는 유지한다.
+ModelKey = Literal["dummy", "xgboost", "lightgbm", "autoencoder"]
+
+ActiveModelKey = Literal["xgboost", "lightgbm", "autoencoder"]
 
 RankingMetric = Literal[
     "f1", "precision", "recall", "accuracy", "balanced_accuracy", "roc_auc", "average_precision"
@@ -71,6 +74,13 @@ class RunCreate(BaseModel):
         if self.train_end >= self.validation_end:
             raise ValueError("Train 종료 시각은 Valid 종료 시각보다 빨라야 합니다.")
         return self
+
+
+class NewRunCreate(RunCreate):
+    """새 학습 요청에서는 현재 지원하는 모델만 선택한다."""
+
+    # 과거 RunCreate를 바꾸지 않아 기존 Dummy 실행 설정의 조회가 깨지지 않는다.
+    models: list[ActiveModelKey] = Field(min_length=1, max_length=3)
 
 
 class SelectionRequest(BaseModel):

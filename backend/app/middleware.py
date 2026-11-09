@@ -21,7 +21,13 @@ class BrowserSecurityMiddleware:
         request_path = scope["path"]
 
         is_private_request = request_path.startswith(
-            ("/api/v1/auth", "/api/v1/datasets", "/api/v1/models", "/api/v1/runs")
+            (
+                "/api/v1/auth",
+                "/api/v1/datasets",
+                "/api/v1/models",
+                "/api/v1/runs",
+                "/api/v1/observations",
+            )
         )
 
         async def send_without_private_cache(message: Message) -> None:

@@ -11,8 +11,8 @@ from app.models import User
 from app.schemas.errors import ErrorResponse
 from app.schemas.runs import (
     EvaluationResponse,
+    NewRunCreate,
     RankingMetric,
-    RunCreate,
     RunDetail,
     RunList,
     RunResults,
@@ -36,7 +36,10 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 @router.post("", response_model=RunDetail, status_code=202, summary="선택한 모델 학습 요청")
 def create_run(
-    body: RunCreate, request: Request, database_session: DatabaseSession, current_user: CurrentUser
+    body: NewRunCreate,
+    request: Request,
+    database_session: DatabaseSession,
+    current_user: CurrentUser,
 ) -> RunDetail:
     # 학습은 대기열에서 처리하므로 다른 사용자의 조회 요청을 막지 않는다.
     return request.app.state.run_manager.create_run(database_session, current_user, body)

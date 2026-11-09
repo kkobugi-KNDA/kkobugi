@@ -65,13 +65,6 @@ def get_model_catalog() -> ModelCatalog:
     return ModelCatalog(
         items=[
             ModelDefinition(
-                key="dummy",
-                display_name="DummyClassifier",
-                kind="baseline",
-                description="Train에서 가장 많은 라벨을 항상 예측하는 기준 모델",
-                parameters={"strategy": "most_frequent", "random_state": 42},
-            ),
-            ModelDefinition(
                 key="xgboost",
                 display_name="XGBoost",
                 kind="classifier",
@@ -82,6 +75,24 @@ def get_model_catalog() -> ModelCatalog:
                     "learning_rate": 0.1,
                     "tree_method": "hist",
                     "n_jobs": 1,
+                    "random_state": 42,
+                },
+            ),
+            ModelDefinition(
+                key="lightgbm",
+                display_name="LightGBM",
+                kind="classifier",
+                description="같은 시간 분할에서 학습하는 지도 분류 모델",
+                parameters={
+                    "n_estimators": 100,
+                    "max_depth": 4,
+                    "num_leaves": 15,
+                    "learning_rate": 0.1,
+                    "min_child_samples": 20,
+                    "n_jobs": 1,
+                    "deterministic": True,
+                    "force_col_wise": True,
+                    "verbosity": -1,
                     "random_state": 42,
                 },
             ),
@@ -108,6 +119,7 @@ def get_model_catalog() -> ModelCatalog:
 
 def create_estimator(model_key: ModelKey, random_seed: int):
     # 외부 모듈명이나 사용자가 올린 pickle은 실행하지 않는다.
+    # 이전에 저장한 Dummy 실행을 검증하는 내부 호환 경로이며 새 목록에는 노출하지 않는다.
     if model_key == "dummy":
         return DummyClassifier(strategy="most_frequent", random_state=random_seed)
     if model_key == "xgboost":
@@ -119,6 +131,22 @@ def create_estimator(model_key: ModelKey, random_seed: int):
             learning_rate=0.1,
             tree_method="hist",
             n_jobs=1,
+            random_state=random_seed,
+        )
+    if model_key == "lightgbm":
+        from lightgbm import LGBMClassifier
+
+        # CPU 한 스레드와 고정 시드를 사용해 같은 분할의 비교 조건을 유지한다.
+        return LGBMClassifier(
+            n_estimators=100,
+            max_depth=4,
+            num_leaves=15,
+            learning_rate=0.1,
+            min_child_samples=20,
+            n_jobs=1,
+            deterministic=True,
+            force_col_wise=True,
+            verbosity=-1,
             random_state=random_seed,
         )
     if model_key == "autoencoder":
