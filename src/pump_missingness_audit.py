@@ -46,8 +46,11 @@ def missing_runs(is_missing, break_before):
     })
 
 
-def audit_missingness(path=None, min_gap=60):
-    """결측 요약과 상세 표를 반환합니다. path를 생략하면 저장소의 data/를 사용합니다."""
+def audit_missingness(path=None, min_gap=60, *, split_by_period=False, excluded_sensors=()):
+    """전체 기간과 원본 센서 전체의 결측을 집계합니다.
+
+    excluded_sensors를 지정하면 센서별 상세 표에서 해당 열을 제외합니다.
+    """
     if min_gap < 1:
         raise ValueError("min_gap은 1 이상이어야 합니다.")
     source = default_source() if path is None else Path(path)
@@ -70,11 +73,12 @@ def audit_missingness(path=None, min_gap=60):
     expected_minutes = (data.index[-1] - data.index[0]) // MINUTE + 1
     break_before = data.index.to_series().diff().ne(MINUTE)
 
-    # 기획서의 날짜 경계를 적용합니다. 종료일은 다음 분할에 포함합니다.
-    split = pd.cut(
-        data.index, pd.to_datetime(SPLIT_DATES), labels=SPLIT_NAMES, right=False
-    )
-    data["split"] = split.add_categories(["분할 외"]).fillna("분할 외")
+    if split_by_period:
+        # 기획서의 날짜 경계를 적용합니다. 종료일은 다음 분할에 포함합니다.
+        split = pd.cut(
+            data.index, pd.to_datetime(SPLIT_DATES), labels=SPLIT_NAMES, right=False
+        )
+        data["split"] = split.add_categories(["분할 외"]).fillna("분할 외")
 
     # 상태 라벨이나 행 번호를 섞지 않고, 실제 센서 열만 결측 판정에 사용합니다.
     missing = data[sensors].isna()
@@ -86,7 +90,9 @@ def audit_missingness(path=None, min_gap=60):
     partial_available = available_sensors.any(axis=1) & ~all_missing
 
     # 노트북과 다른 코드에서 결과 표를 바로 사용할 수 있도록 출력과 계산을 분리합니다.
-    columns = ["CSV 레코드 번호", "split", "machine_status"]
+    columns = ["CSV 레코드 번호", "machine_status"]
+    if split_by_period:
+        columns.insert(1, "split")
     if "Unnamed: 0" in data.columns:
         columns.insert(1, "Unnamed: 0")
     all_missing_rows = data.loc[all_missing, columns].rename(
@@ -94,19 +100,22 @@ def audit_missingness(path=None, min_gap=60):
     )
 
     counts = pd.DataFrame({
-        "split": data["split"],
         "상태": data["machine_status"],
         "전체 행": 1,
         "센서 전체 결측": all_missing,
         "일부 결측(전 구간 결측 센서 제외)": partial_available,
     })
-    by_split_status = counts.groupby(["split", "상태"], observed=True, dropna=False).sum()
+    by_status = counts.groupby("상태", dropna=False).sum()
 
-    per_split = missing.groupby(data["split"], observed=True).sum().T
     sensor_summary = pd.DataFrame({
         "결측 건수": missing.sum(),
         "결측률(%)": 100 * missing.mean(),
-    }).join(per_split)
+    })
+    if split_by_period:
+        counts["split"] = data["split"]
+        by_split_status = counts.groupby(["split", "상태"], observed=True, dropna=False).sum()
+        per_split = missing.groupby(data["split"], observed=True).sum().T
+        sensor_summary = sensor_summary.join(per_split)
     long_gaps = []
     for sensor in sensors:
         gaps = missing_runs(missing[sensor], break_before)
@@ -116,12 +125,17 @@ def audit_missingness(path=None, min_gap=60):
         long_gaps.append(gaps.loc[gaps["연속 결측(분)"] >= min_gap].assign(센서=sensor))
 
     sensor_summary["최장 결측(분)"] = sensor_summary["최장 결측(분)"].astype(int)
+    # 기본으로 원본 센서를 모두 번호순으로 표시합니다.
+    sensor_details = sensor_summary.drop(index=list(excluded_sensors), errors="ignore").sort_index()
+    selected_missing = missing[sensor_details.index]
     detail = pd.concat(long_gaps, ignore_index=True)
     return {
         "summary": {
             "source": source.resolve(),
             "row_count": len(data),
             "sensor_count": len(sensors),
+            "selected_sensor_count": len(sensor_details),
+            "selected_missing_rows": int(selected_missing.any(axis=1).sum()),
             "start": data.index[0],
             "end": data.index[-1],
             "missing_timestamps": int(expected_minutes - len(data)),
@@ -131,8 +145,10 @@ def audit_missingness(path=None, min_gap=60):
             "min_gap": min_gap,
         },
         "all_missing_rows": all_missing_rows,
-        "by_split_status": by_split_status,
+        "by_status": by_status,
+        **({"by_split_status": by_split_status} if split_by_period else {}),
         "by_sensor": sensor_summary.sort_values("결측 건수", ascending=False),
+        "sensor_details": sensor_details,
         "long_gaps": detail.sort_values("연속 결측(분)", ascending=False).reset_index(drop=True),
     }
 
@@ -150,10 +166,15 @@ def print_audit(report):
     print("\n[전체 센서 결측 행]")
     rows = report["all_missing_rows"]
     print("없음" if rows.empty else rows.to_string())
-    print("\n[분할·상태별 결측 행 수]")
-    print(report["by_split_status"].to_string())
-    print("\n[센서별 결측 건수 · 결측률 · 최장 연속 결측]")
-    print(report["by_sensor"].round(3).to_string())
+    if "by_split_status" in report:
+        print("\n[분할·상태별 결측 행 수]")
+        print(report["by_split_status"].to_string())
+    else:
+        print("\n[전체 기간 상태별 결측 행 수]")
+        print(report["by_status"].to_string())
+    print(f"\n[분석 대상 {summary['selected_sensor_count']}개 센서의 결측]")
+    print(f"결측이 하나라도 있는 행 {summary['selected_missing_rows']:,} / {summary['row_count']:,}행")
+    print(report["sensor_details"].round(3).to_string())
 
     print(f"\n[{summary['min_gap']}분 이상 연속 결측 구간]")
     gaps = report["long_gaps"]
@@ -165,8 +186,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", type=Path, help="생략 시 data/sensor.csv 또는 data/archive.zip")
     parser.add_argument("--min-gap", type=int, default=60, help="상세 출력할 최소 연속 결측 분 수")
+    period_options = parser.add_mutually_exclusive_group()
+    period_options.add_argument("--by-period", action="store_true", dest="split_by_period",
+                                help="학습·검증·시험 구간별 집계 추가")
+    period_options.add_argument("--overall", action="store_false", dest="split_by_period",
+                                help="전체 기간 집계만 표시 (기본값)")
+    parser.set_defaults(split_by_period=False)
     args = parser.parse_args()
     try:
-        print_audit(audit_missingness(args.source, args.min_gap))
+        print_audit(audit_missingness(args.source, args.min_gap, split_by_period=args.split_by_period))
     except (OSError, ValueError, KeyError, BadZipFile) as error:
         parser.error(str(error))
