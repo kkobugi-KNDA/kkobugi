@@ -416,7 +416,7 @@ export default function DataPage() {
                     <p className="dm-caption">업로드한 원본의 미리보기</p>
                   </div>
                   <Link className="button secondary" to="/models">
-                    모델 비교로 <ArrowRight size={15} />
+                    모델 학습으로 <ArrowRight size={15} />
                   </Link>
                 </div>
                 <div className="dm-table-scroll">
