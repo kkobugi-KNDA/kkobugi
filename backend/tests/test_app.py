@@ -6,8 +6,12 @@ from app.main import Settings, create_app
 
 
 @pytest.fixture
-def client():
-    settings = Settings(_env_file=None, cors_origins=["http://localhost:5173"])
+def client(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "health.sqlite3",
+        cors_origins=["http://localhost:5173"],
+    )
     with TestClient(create_app(settings)) as test_client:
         yield test_client
 

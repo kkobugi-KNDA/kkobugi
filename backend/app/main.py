@@ -1,28 +1,54 @@
 """FastAPI 앱과 공통 미들웨어 구성."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.config import Settings
+from app.db import Database
+from app.errors import register_error_handlers
+from app.middleware import BrowserSecurityMiddleware
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings if settings is not None else Settings()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        database = Database(settings.database_path)
+        application.state.database = database
+        try:
+            database.create_tables()
+            yield
+        finally:
+            database.dispose()
+
     application = FastAPI(
         title=settings.app_name,
         version=__version__,
         description="꼬부기 백엔드 API",
+        lifespan=lifespan,
+    )
+    application.state.settings = settings
+    register_error_handlers(application)
+    application.add_middleware(
+        BrowserSecurityMiddleware,
+        trusted_origins=[*settings.cors_origins, *settings.trusted_origins],
     )
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type", "X-Requested-With"],
     )
     application.include_router(health_router)
+    application.include_router(auth_router)
     return application
 
 
