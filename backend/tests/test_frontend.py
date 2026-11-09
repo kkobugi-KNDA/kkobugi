@@ -26,7 +26,7 @@ def deployed_client(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "path", ["/", "/data", "/models", "/monitor", "/review", "/reports", "/costs"]
+    "path", ["/", "/data", "/models", "/monitor", "/simulation", "/review", "/reports", "/costs"]
 )
 def test_page_refresh_returns_frontend(deployed_client, path):
     response = deployed_client.get(path)

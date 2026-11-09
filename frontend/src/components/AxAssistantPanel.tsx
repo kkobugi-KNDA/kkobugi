@@ -20,6 +20,7 @@ interface Props {
   split?: 'validation' | 'test';
   selectedSignal?: string;
   contextKey?: string;
+  suggestedCostInputs?: AssistantCostInput;
 }
 
 const costFields: { key: keyof AssistantCostInput; label: string }[] = [
@@ -118,6 +119,7 @@ export default function AxAssistantPanel({
   split = 'validation',
   selectedSignal = '',
   contextKey = '',
+  suggestedCostInputs,
 }: Props) {
   const { expertise, isExpert } = useExpertise();
 
@@ -147,6 +149,8 @@ export default function AxAssistantPanel({
 
   const generation = useRef(0);
 
+  const suggestedCostsKey = JSON.stringify(suggestedCostInputs || {});
+
   // 데이터·계정이 바뀌면 이전 답변과 보고서를 새 모델의 결과로 보여주지 않는다.
   useEffect(() => {
     generation.current += 1;
@@ -162,8 +166,18 @@ export default function AxAssistantPanel({
 
   useEffect(() => {
     setObservation('');
-    setCostInputs({});
-  }, [runId, modelKey, split, user?.id, mode]);
+    // 시뮬레이션에서 사용자가 입력한 견적만 가져온다. 단가를 자동 추정하지 않는다.
+    const suggested = JSON.parse(suggestedCostsKey) as AssistantCostInput;
+
+    setCostInputs(
+      Object.fromEntries(
+        Object.entries(suggested).map(([key, value]) => [
+          key,
+          typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value),
+        ]),
+      ),
+    );
+  }, [runId, modelKey, split, user?.id, mode, suggestedCostsKey]);
 
   // 화면을 닫거나 다른 기록으로 옮기면 해당 보고서의 상태 조회도 종료한다.
   useEffect(() => {
