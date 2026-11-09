@@ -2,7 +2,7 @@
 
 import time
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from app.db import Base
@@ -61,3 +61,46 @@ class LoginAttempt(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     window_start: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+
+class Dataset(Base):
+    """업로드한 CSV의 소유자, 원본 식별값과 검사 결과를 보관한다."""
+
+    __tablename__ = "datasets"
+
+    # 같은 계정이 같은 파일과 컬럼 설정으로 재등록해도 기존 자료를 재사용한다.
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id",
+            "sha256",
+            "timestamp_column",
+            "label_column",
+            "normal_label",
+            "abnormal_label",
+            name="uq_dataset_owner_content_mapping",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+
+    # 파일 이름은 표시할 때만 쓰며, 실제 저장 경로는 서버가 만든 ID로 정한다.
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    timestamp_column: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    label_column: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    normal_label: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    abnormal_label: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    created_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    # 검사 결과를 함께 저장해 서버를 다시 켜도 동일한 내용을 보여준다.
+    inspection: Mapped[dict] = mapped_column(JSON, nullable=False)

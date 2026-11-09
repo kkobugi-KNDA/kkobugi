@@ -8,9 +8,16 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User
 from app.schemas.auth import AuthResponse, LoginRequest, PublicUser
+from app.schemas.errors import ErrorResponse
 from app.services import auth as auth_service
 
-router = APIRouter(prefix="/api/v1/auth", tags=["인증"])
+router = APIRouter(
+    prefix="/api/v1/auth",
+    tags=["인증"],
+    responses={
+        status_code: {"model": ErrorResponse} for status_code in (401, 403, 415, 422, 429, 503)
+    },
+)
 
 # 요청마다 DB 연결을 받고, 요청이 끝나면 get_db가 연결을 반환한다.
 DatabaseSession = Annotated[Session, Depends(get_db)]

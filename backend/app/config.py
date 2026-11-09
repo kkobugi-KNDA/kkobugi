@@ -31,6 +31,16 @@ class Settings(BaseSettings):
 
     database_path: Path = BACKEND_DIR / ".runtime" / "kkobugi.sqlite3"
 
+    # 업로드 원본은 DB와 별도로 보관하고, API를 통해서만 접근한다.
+    dataset_storage_path: Path = BACKEND_DIR / ".runtime" / "datasets"
+
+    # 파일 크기는 바이트, 행·열 제한은 CSV 검사에 사용한다.
+    max_upload_bytes: int = Field(default=200 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024)
+
+    max_dataset_rows: int = Field(default=1_000_000, ge=1, le=10_000_000)
+
+    max_dataset_columns: int = Field(default=256, ge=3, le=4096)
+
     # 기본 세션은 12시간이며, 모든 시간 설정의 단위는 초다.
     session_ttl_seconds: int = Field(default=43_200, ge=60, le=604_800)
 
@@ -66,7 +76,7 @@ class Settings(BaseSettings):
 
         return [origin.rstrip("/") for origin in origins]
 
-    @field_validator("database_path")
+    @field_validator("database_path", "dataset_storage_path")
     @classmethod
     def resolve_database_path(cls, database_path: Path) -> Path:
         # 메모리 DB는 테스트에서 사용하며 파일 경로로 변환하지 않는다.
