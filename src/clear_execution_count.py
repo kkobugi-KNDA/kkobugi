@@ -1,8 +1,16 @@
-"""Jupyter 노트북의 출력과 내용은 유지하고 실행 번호만 비웁니다."""
+"""Jupyter 노트북의 출력과 내용은 유지하고 실행 번호와 셀 실행 시각 기록을 비웁니다.
+
+출력 그림이 마지막 커밋(HEAD)의 같은 셀 그림과 픽셀까지 같으면 커밋된 PNG 데이터를 그대로 둡니다.
+Pillow·zlib 버전이 다르면 같은 그림도 압축 결과가 달라져 git에서 '수정됨'으로 보이기 때문입니다.
+"""
 
 import argparse
+import base64
+import binascii
+import io
 import json
 from pathlib import Path
+import subprocess
 from tempfile import NamedTemporaryFile
 
 
@@ -27,6 +35,10 @@ def clear_execution_count(file_path: Path) -> bool:
             if item.get("execution_count") is not None:
                 item["execution_count"] = None
                 changed = True
+        # nbconvert·JupyterLab이 남기는 셀 실행 시각은 실행할 때마다 달라지므로 지웁니다.
+        if cell.get("metadata", {}).pop("execution", None) is not None:
+            changed = True
+    changed = keep_committed_images(notebook, file_path) or changed
     if not changed:
         return False
 
@@ -48,6 +60,55 @@ def clear_execution_count(file_path: Path) -> bool:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
     return True
+
+
+def keep_committed_images(notebook, file_path: Path) -> bool:
+    """HEAD의 같은 셀(셀 id 기준) 그림과 픽셀이 같은 출력 그림을 커밋된 데이터로 되돌립니다."""
+    committed = _committed_notebook(file_path)
+    if committed is None:
+        return False
+    old_images = {
+        cell["id"]: [output["data"]["image/png"] for output in cell.get("outputs", [])
+                     if "image/png" in output.get("data", {})]
+        for cell in committed.get("cells", []) if "id" in cell
+    }
+    changed = False
+    for cell in notebook["cells"]:
+        olds = old_images.get(cell.get("id"), [])
+        news = [output["data"] for output in cell.get("outputs", []) if "image/png" in output.get("data", {})]
+        # 셀 안의 그림 순서대로 짝을 짓습니다. 그림 수가 다르면 셀 결과가 바뀐 것이므로 건드리지 않습니다.
+        if len(olds) != len(news):
+            continue
+        for old, data in zip(olds, news):
+            if data["image/png"] != old and _same_pixels(old, data["image/png"]):
+                data["image/png"] = old
+                changed = True
+    return changed
+
+
+def _committed_notebook(file_path: Path):
+    # git 저장소가 아니거나 아직 커밋되지 않은 노트북이면 비교하지 않습니다.
+    try:
+        result = subprocess.run(
+            ["git", "show", f"HEAD:./{file_path.name}"],
+            cwd=file_path.resolve().parent, capture_output=True, check=True,
+        )
+        return json.loads(result.stdout.decode("utf-8"))
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def _same_pixels(first, second) -> bool:
+    try:
+        from PIL import Image  # matplotlib을 설치하면 함께 설치됩니다.
+    except ImportError:
+        return False
+    try:
+        images = [Image.open(io.BytesIO(base64.b64decode("".join(data)))) for data in (first, second)]
+        keys = [(image.size, image.mode, image.info.get("dpi")) for image in images]
+        return keys[0] == keys[1] and images[0].tobytes() == images[1].tobytes()
+    except (OSError, ValueError, binascii.Error):
+        return False
 
 
 def find_notebooks(root: Path):
@@ -76,7 +137,7 @@ def main():
     for file_path in files:
         try:
             changed = clear_execution_count(file_path)
-            print(f"{'실행 번호 초기화' if changed else '변경 없음'}: {file_path}")
+            print(f"{'정리함' if changed else '변경 없음'}: {file_path}")
             changed_count += changed
         except (OSError, ValueError, KeyError) as error:
             print(f"처리 실패: {file_path} — {error}")
