@@ -35,7 +35,7 @@
   width: 47px;
   height: 7px;
   border-radius: 50%;
-  background: rgb(26 52 76 / 19%);
+  background: rgba(var(--theme-shadow-rgb, 26, 52, 76), 0.19);
   filter: blur(4px);
 }
 .assistant-pet--dragging .assistant-pet-button {
@@ -120,17 +120,21 @@
   right: 0;
   width: min(310px, calc(100vw - 36px));
   padding: 15px 18px;
-  border: 1px solid #c5d8e7;
+  border: 1px solid var(--theme-primary-border, #c5d8e7);
   border-radius: 16px 16px 4px 16px;
-  background: linear-gradient(120deg, #f3f9ff, #fff);
-  color: #36516b;
-  box-shadow: 0 8px 28px #183b5c22;
+  background: linear-gradient(
+    120deg,
+    var(--theme-primary-surface, #f3f9ff),
+    var(--theme-surface, #fff)
+  );
+  color: var(--theme-text-strong, #36516b);
+  box-shadow: 0 8px 28px rgba(var(--theme-shadow-rgb, 24, 59, 92), 0.13);
   font-size: 12px;
   line-height: 1.6;
 }
 .assistant-pet-message strong {
   font-size: 11px;
-  color: #3775ac;
+  color: var(--theme-primary, #3775ac);
 }
 .assistant-pet-message p {
   margin: 7px 0;
@@ -138,7 +142,7 @@
 .assistant-pet-message-open {
   border: 0;
   padding: 4px 0;
-  color: #285f98;
+  color: var(--theme-primary, #285f98);
   background: transparent;
   font: inherit;
   cursor: pointer;
@@ -148,7 +152,7 @@
   top: 6px;
   right: 6px;
   padding: 4px;
-  color: #6b8197;
+  color: var(--theme-text-secondary, #6b8197);
   background: transparent;
   border: 0;
   cursor: pointer;

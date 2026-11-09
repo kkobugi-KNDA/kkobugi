@@ -3,7 +3,7 @@ services:
     name: kkobugi
     runtime: docker
     region: singapore
-    branch: namelesspark7
+    branch: main
     autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     dockerContext: .

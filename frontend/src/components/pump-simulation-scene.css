@@ -4,8 +4,14 @@
   min-height: 600px;
   height: min(72vh, 760px);
   overflow: hidden;
-  color: #dbe7ee;
-  background: radial-gradient(ellipse at 38% 50%, #233743 0, #101d27 46%, #0a131b 83%);
+  color: var(--theme-text-strong, #243545);
+  /* 투명 WebGL 캔버스 뒤의 배경도 페이지 테마를 그대로 따른다. */
+  background: radial-gradient(
+    ellipse at 38% 50%,
+    var(--theme-surface-raised, #dce7ef) 0,
+    var(--theme-surface, #edf3f7) 46%,
+    var(--theme-canvas, #f5f8fa) 83%
+  );
   border-radius: 16px;
 }
 
@@ -39,7 +45,7 @@
 
 .pump-simulation-caption > span,
 .pump-simulation-parts-label {
-  color: #89a7ba;
+  color: var(--theme-text-muted, #536b7d);
   font:
     11px/1.5 ui-monospace,
     monospace;
@@ -48,7 +54,7 @@
 
 .pump-simulation-caption h2 {
   margin: 8px 0;
-  color: #ecf4f8;
+  color: var(--theme-text-strong, #243545);
   font-size: clamp(22px, 2.4vw, 34px);
   font-weight: 550;
   letter-spacing: -0.05em;
@@ -56,7 +62,7 @@
 
 .pump-simulation-caption p {
   margin: 0;
-  color: #a6bdcb;
+  color: var(--theme-text-secondary, #536b7d);
   font-size: 12px;
 }
 
@@ -68,7 +74,7 @@
   align-items: center;
   gap: 7px;
   margin: 0;
-  color: #99b0c0;
+  color: var(--theme-text-secondary, #536b7d);
   font-size: 11px;
   pointer-events: none;
 }
@@ -80,14 +86,14 @@
   right: 20px;
   max-width: 370px;
   margin: 0;
-  color: #ffa49f;
+  color: var(--theme-danger, #a52d3f);
   font-size: 12px;
   line-height: 1.6;
   pointer-events: none;
 }
 
 .pump-simulation-stage.has-signal .pump-simulation-caption p {
-  color: #ffaaa5;
+  color: var(--theme-danger, #a52d3f);
 }
 
 .pump-simulation-parts {
@@ -115,9 +121,9 @@
   justify-content: flex-end;
   min-height: 95px;
   padding: 13px;
-  color: #c6d8e3;
-  background: rgb(32 53 67 / 22%);
-  border: 1px solid #335062;
+  color: var(--theme-text-secondary, #536b7d);
+  background: rgba(var(--theme-surface-rgb, 255, 255, 255), 0.55);
+  border: 1px solid var(--theme-border, #a9bfce);
   border-radius: 10px;
   cursor: pointer;
   transition:
@@ -130,9 +136,9 @@
 .pump-simulation-part:hover,
 .pump-simulation-part:focus-visible,
 .pump-simulation-part.is-selected {
-  color: #e3f3fc;
-  border-color: #78badf;
-  background: rgb(50 87 109 / 25%);
+  color: var(--theme-primary, #245d8f);
+  border-color: var(--theme-primary-border, #6097bd);
+  background: var(--theme-primary-surface, #e1edf5);
   transform: perspective(600px) translateX(-5px) translateZ(10px);
   outline: none;
 }
@@ -141,7 +147,7 @@
   position: absolute;
   top: 10px;
   left: 12px;
-  color: #91b0c4;
+  color: var(--theme-text-muted, #536b7d);
   font:
     10px/1 ui-monospace,
     monospace;
@@ -155,7 +161,7 @@
   gap: 8px;
   align-self: center;
   margin: auto 0;
-  color: #7f9bab;
+  color: var(--theme-text-secondary, #536b7d);
   font-size: 10px;
 }
 
@@ -170,7 +176,7 @@
   right: 50%;
   width: 1px;
   height: 18px;
-  background: #78badf;
+  background: var(--theme-primary, #3274a7);
   opacity: 0.3;
   transform-origin: bottom;
   transition:
@@ -189,7 +195,7 @@
 .pump-simulation-parts-note {
   grid-column: 1 / -1;
   margin: 0;
-  color: #809cad;
+  color: var(--theme-text-muted, #536b7d);
   font-size: 10px;
   line-height: 1.6;
 }
@@ -206,7 +212,7 @@
   margin: 0;
   padding: 25px;
   text-align: center;
-  color: #b9cedb;
+  color: var(--theme-text-secondary, #536b7d);
   font-size: 12px;
   line-height: 1.7;
   pointer-events: none;
@@ -214,7 +220,7 @@
 
 .pump-simulation-fallback p {
   margin: 0;
-  color: #87a5b8;
+  color: var(--theme-text-muted, #536b7d);
 }
 
 @media (max-width: 700px) {
