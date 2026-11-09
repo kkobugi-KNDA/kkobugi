@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ModelsPage, { learningScore } from './ModelsPage';
@@ -85,6 +85,144 @@ beforeEach(() => {
 });
 
 describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
+  it('CSV를 선택하면 버튼 클릭 없이 시간 경계를 채우고 학습 시작을 활성화한다', async () => {
+    localStorage.setItem('kkobugi:expertise', 'pro-plus');
+    mount();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Train 종료 시각')).toHaveValue(plan().configuration.train_end),
+    );
+    expect(screen.getByLabelText('Valid 종료 시각')).toHaveValue(
+      plan().configuration.validation_end,
+    );
+    expect(mocks.prepareTraining).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled();
+    expect(mocks.api.createRun).not.toHaveBeenCalled();
+  });
+
+  it('비율·모델 변경 시 새 경계를 채우되 사용자가 입력한 모델 옵션은 보존한다', async () => {
+    localStorage.setItem('kkobugi:expertise', 'pro-plus');
+    mocks.prepareTraining.mockImplementation(async (request) => ({
+      ...plan(request.model_key),
+      configuration: {
+        ...plan(request.model_key).configuration,
+        train_end: request.train_ratio === 0.6 ? '2018-04-01T03:00:00' : '2018-04-01T03:29:00',
+        validation_end: request.train_ratio === 0.6 ? '2018-04-01T04:00:00' : '2018-04-01T04:49:00',
+      },
+    }));
+    const user = userEvent.setup();
+
+    mount();
+    await waitFor(() => expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled());
+    await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
+    const treeCount = screen.getByLabelText('트리 수 · n_estimators');
+
+    await user.clear(treeCount);
+    await user.type(treeCount, '120');
+    await user.selectOptions(screen.getByLabelText('Train : Valid : Test'), '60:20:20');
+    await waitFor(() =>
+      expect(screen.getByLabelText('Train 종료 시각')).toHaveValue('2018-04-01T03:00:00'),
+    );
+    expect(screen.getByLabelText('Valid 종료 시각')).toHaveValue('2018-04-01T04:00:00');
+    expect(treeCount).toHaveValue(120);
+    await user.click(screen.getByRole('radio', { name: /AutoEncoder/ }));
+    await waitFor(() =>
+      expect(mocks.prepareTraining.mock.calls.at(-1)?.[0]).toMatchObject({
+        model_key: 'autoencoder',
+        train_ratio: 0.6,
+        validation_ratio: 0.2,
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled());
+    expect(screen.getByLabelText('Train 종료 시각')).toHaveValue('2018-04-01T03:00:00');
+    expect(mocks.api.createRun).not.toHaveBeenCalled();
+  });
+
+  it('자동 시각 설정 실패를 표시하고 재시도한 뒤에만 학습 시작을 활성화한다', async () => {
+    mocks.prepareTraining.mockRejectedValueOnce(
+      new Error('학습 구간에 정상·비정상이 모두 필요해요.'),
+    );
+    const user = userEvent.setup();
+
+    mount();
+    expect(await screen.findByText('학습 구간에 정상·비정상이 모두 필요해요.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '자동 설정' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled());
+    expect(screen.queryByText('학습 구간에 정상·비정상이 모두 필요해요.')).not.toBeInTheDocument();
+  });
+
+  it('자동 설정 응답을 기다리며 입력한 수동 시각을 늦은 응답이 덮어쓰지 않는다', async () => {
+    localStorage.setItem('kkobugi:expertise', 'pro-plus');
+    let resolvePlan: (value: ReturnType<typeof plan>) => void = () => {};
+
+    mocks.prepareTraining.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePlan = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+
+    mount();
+    await waitFor(() => expect(mocks.prepareTraining).toHaveBeenCalledOnce());
+    const requestSignal = mocks.prepareTraining.mock.calls[0][1] as AbortSignal;
+
+    await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
+    await user.type(screen.getByLabelText('Train 종료 시각'), '2018-04-01T02:00:00');
+    await user.type(screen.getByLabelText('Valid 종료 시각'), '2018-04-01T04:00:00');
+    await act(async () => resolvePlan(plan()));
+    expect(requestSignal.aborted).toBe(true);
+    expect(screen.getByLabelText('Train 종료 시각')).toHaveValue('2018-04-01T02:00:00');
+    expect(screen.getByLabelText('Valid 종료 시각')).toHaveValue('2018-04-01T04:00:00');
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled();
+  });
+
+  it('자동 요청이 출발하기 전에 입력한 수동 시각도 예약된 재계산으로 덮지 않는다', async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('kkobugi:expertise', 'pro-plus');
+    try {
+      mount();
+      await act(async () => {});
+      fireEvent.change(screen.getByLabelText('Train 종료 시각'), {
+        target: { value: '2018-04-01T02:00:00' },
+      });
+      fireEvent.change(screen.getByLabelText('Valid 종료 시각'), {
+        target: { value: '2018-04-01T04:00:00' },
+      });
+      await act(async () => vi.advanceTimersByTimeAsync(200));
+      expect(mocks.prepareTraining).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Train 종료 시각')).toHaveValue('2018-04-01T02:00:00');
+      expect(screen.getByLabelText('Valid 종료 시각')).toHaveValue('2018-04-01T04:00:00');
+      expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('직접 정한 시간 경계는 모델을 바꾸어도 그대로 학습 요청에 사용한다', async () => {
+    localStorage.setItem('kkobugi:expertise', 'pro-plus');
+    const user = userEvent.setup();
+
+    mount();
+    await waitFor(() => expect(screen.getByRole('button', { name: '학습 시작' })).toBeEnabled());
+    await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
+    await user.clear(screen.getByLabelText('Train 종료 시각'));
+    await user.type(screen.getByLabelText('Train 종료 시각'), '2018-04-01T02:00:00');
+    await user.clear(screen.getByLabelText('Valid 종료 시각'));
+    await user.type(screen.getByLabelText('Valid 종료 시각'), '2018-04-01T04:00:00');
+    await user.click(screen.getByRole('radio', { name: /AutoEncoder/ }));
+    expect(screen.getByLabelText('Train 종료 시각')).toHaveValue('2018-04-01T02:00:00');
+    expect(screen.getByLabelText('Valid 종료 시각')).toHaveValue('2018-04-01T04:00:00');
+    await user.click(screen.getByRole('button', { name: '학습 시작' }));
+    await waitFor(() => expect(mocks.api.createRun).toHaveBeenCalledOnce());
+    expect(mocks.api.createRun.mock.calls[0][0]).toMatchObject({
+      models: ['autoencoder'],
+      train_end: '2018-04-01T02:00:00',
+      validation_end: '2018-04-01T04:00:00',
+    });
+    expect(mocks.prepareTraining).toHaveBeenCalledOnce();
+  });
+
   it('학습 전에는 진행할 순서만 안내하고 완료 상태를 만들어내지 않는다', () => {
     mount();
     const preview = screen.getByRole('region', { name: '학습을 시작하면 진행할 순서' });
@@ -403,10 +541,16 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
       const user = userEvent.setup();
 
       mount();
-      await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
+      await waitFor(() =>
+        expect(screen.getByLabelText('Train 종료 시각')).toHaveValue(
+          plan().configuration.train_end,
+        ),
+      );
       await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
       await user.click(screen.getByRole('checkbox', { name: 'sensor_38' }));
+      await user.clear(screen.getByLabelText('Train 종료 시각'));
       await user.type(screen.getByLabelText('Train 종료 시각'), trainEnd);
+      await user.clear(screen.getByLabelText('Valid 종료 시각'));
       await user.type(screen.getByLabelText('Valid 종료 시각'), validEnd);
       await user.click(screen.getByRole('button', { name: '학습 시작' }));
       await waitFor(() => expect(mocks.api.createRun).toHaveBeenCalledOnce());
@@ -416,7 +560,7 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
         train_end: trainEnd,
         validation_end: validEnd,
       });
-      expect(mocks.prepareTraining).not.toHaveBeenCalled();
+      expect(mocks.prepareTraining).toHaveBeenCalledOnce();
     },
   );
 
@@ -431,7 +575,9 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
     mount();
     await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
     await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
+    await user.clear(screen.getByLabelText('Train 종료 시각'));
     await user.type(screen.getByLabelText('Train 종료 시각'), '2018-04-01T04:49:00');
+    await user.clear(screen.getByLabelText('Valid 종료 시각'));
     await user.type(screen.getByLabelText('Valid 종료 시각'), '2018-04-01T03:29:00');
     await user.click(screen.getByRole('button', { name: '학습 시작' }));
     expect(await screen.findByText(/Train 종료와 Valid 종료를 올바른 ISO/)).toBeInTheDocument();
@@ -488,8 +634,7 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
     const user = userEvent.setup();
 
     mount();
-    await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: '자동 설정' }));
+    await waitFor(() => expect(mocks.prepareTraining).toHaveBeenCalledOnce());
     await user.click(screen.getByRole('radio', { name: /AutoEncoder/ }));
     resolvePlan(plan('xgboost'));
     await waitFor(() => expect(screen.queryByText('210행')).not.toBeInTheDocument());

@@ -438,6 +438,10 @@ export default function ModelsPage() {
 
   const planController = useRef<AbortController | null>(null);
 
+  const manualBoundaries = useRef(false);
+
+  const loadedDatasetAccount = useRef('');
+
   const currentRun = useRef(selectedRunId);
 
   const activeAccount = useRef('');
@@ -461,6 +465,8 @@ export default function ModelsPage() {
     const controller = new AbortController();
 
     setDataset(null);
+    loadedDatasetAccount.current = '';
+    manualBoundaries.current = false;
     setFeatures([]);
     setTrainEnd('');
     setValidationEnd('');
@@ -475,6 +481,7 @@ export default function ModelsPage() {
     request
       .then((next) => {
         if (controller.signal.aborted) return;
+        loadedDatasetAccount.current = `${mode}:${user?.id}`;
         setDataset(next);
         setFeatures([...next.inspection.channels]);
       })
@@ -562,12 +569,24 @@ export default function ModelsPage() {
     };
   }, [selectedRunId, mode, user?.id, reload]);
 
-  async function automaticSettings() {
-    if (!dataset || mode === 'demo') return;
+  async function automaticSettings(resetOptions = true) {
+    if (
+      !dataset ||
+      mode === 'demo' ||
+      loadedDatasetAccount.current !== activeAccount.current ||
+      (!resetOptions && manualBoundaries.current)
+    )
+      return;
     const controller = new AbortController();
+
+    const requestAccount = activeAccount.current;
 
     planController.current?.abort();
     planController.current = controller;
+    if (resetOptions) manualBoundaries.current = false;
+    setPlan(null);
+    setTrainEnd('');
+    setValidationEnd('');
     setPlanning(true);
     setFormError('');
     try {
@@ -582,12 +601,17 @@ export default function ModelsPage() {
         controller.signal,
       );
 
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || activeAccount.current !== requestAccount) return;
       setPlan(next);
       setTrainEnd(next.configuration.train_end);
       setValidationEnd(next.configuration.validation_end);
-      setOptions(next.configuration.model_options?.[modelKey] || { ...DEFAULT_OPTIONS[modelKey] });
-      setSeed(next.configuration.random_seed);
+      // 사용자가 바꾼 옵션은 자동 재계산으로 덮지 않는다. 버튼을 누른 경우에만 초기화한다.
+      if (resetOptions) {
+        setOptions(
+          next.configuration.model_options?.[modelKey] || { ...DEFAULT_OPTIONS[modelKey] },
+        );
+        setSeed(next.configuration.random_seed);
+      }
     } catch (error) {
       if (!controller.signal.aborted) setFormError(errorMessage(error));
     } finally {
@@ -595,9 +619,42 @@ export default function ModelsPage() {
     }
   }
 
+  useEffect(() => {
+    // CSV를 고르면 시간 경계를 자동으로 채운다. 수동 입력 중에는 늦은 응답도 적용하지 않는다.
+    if (
+      !dataset ||
+      datasetLoading ||
+      dataset.dataset.id !== datasetId ||
+      dataset.dataset.status !== 'valid' ||
+      !features.length ||
+      mode === 'demo' ||
+      loadedDatasetAccount.current !== activeAccount.current ||
+      manualBoundaries.current
+    )
+      return;
+    setPlanning(true);
+    const timer = setTimeout(() => void automaticSettings(false), 150);
+
+    return () => {
+      clearTimeout(timer);
+      planController.current?.abort();
+    };
+  }, [
+    dataset,
+    datasetLoading,
+    datasetId,
+    mode,
+    user?.id,
+    modelKey,
+    ratioPreset,
+    trainRatio,
+    validationRatio,
+    features,
+  ]);
+
   async function startTraining(event: FormEvent) {
     event.preventDefault();
-    if (mode === 'demo' || creating) return;
+    if (mode === 'demo' || creating || planning) return;
     setFormError('');
     if (!dataset || dataset.dataset.status !== 'valid' || !features.length) {
       setFormError('검사를 통과한 CSV와 학습할 채널을 선택해주세요.');
@@ -848,7 +905,7 @@ export default function ModelsPage() {
               <p>
                 {isExpert
                   ? '자동 설정값을 확인하고 필요한 값만 조정합니다.'
-                  : '자동 설정을 누르면 데이터를 나누고 모델 옵션을 준비해요.'}
+                  : '데이터를 고르면 시간 순서대로 나누고 학습할 준비를 해요.'}
               </p>
             </div>
           </div>
@@ -866,6 +923,7 @@ export default function ModelsPage() {
                   const value = event.target.value;
 
                   clearPlan();
+                  manualBoundaries.current = false;
                   setRatioPreset(value);
                   if (value !== 'custom') {
                     const parts = value.split(':').map(Number);
@@ -886,7 +944,7 @@ export default function ModelsPage() {
             <button
               type="button"
               className="button secondary"
-              onClick={automaticSettings}
+              onClick={() => void automaticSettings()}
               disabled={
                 !dataset ||
                 dataset.dataset.status !== 'valid' ||
@@ -904,6 +962,7 @@ export default function ModelsPage() {
               자동 설정
             </button>
           </div>
+          {planning && <p role="status">데이터에 맞춰 학습·확인 시각을 자동으로 채우고 있어요.</p>}
           {ratioPreset === 'custom' && isExpert && (
             <div className="dm-form-grid">
               <Field label="Train 비율 (%)" htmlFor="training-train-ratio">
@@ -917,6 +976,7 @@ export default function ModelsPage() {
                   value={trainRatio}
                   onChange={(event) => {
                     clearPlan();
+                    manualBoundaries.current = false;
                     setTrainRatio(Number(event.target.value));
                   }}
                 />
@@ -932,6 +992,7 @@ export default function ModelsPage() {
                   value={validationRatio}
                   onChange={(event) => {
                     clearPlan();
+                    manualBoundaries.current = false;
                     setValidationRatio(Number(event.target.value));
                   }}
                 />
@@ -1025,6 +1086,7 @@ export default function ModelsPage() {
                     value={trainEnd}
                     disabled={creating}
                     onChange={(event) => {
+                      manualBoundaries.current = true;
                       clearPlan();
                       setTrainEnd(event.target.value);
                     }}
@@ -1038,6 +1100,7 @@ export default function ModelsPage() {
                     value={validationEnd}
                     disabled={creating}
                     onChange={(event) => {
+                      manualBoundaries.current = true;
                       clearPlan();
                       setValidationEnd(event.target.value);
                     }}
@@ -1121,7 +1184,10 @@ export default function ModelsPage() {
                 !dataset ||
                 dataset.dataset.status !== 'valid' ||
                 mode === 'demo' ||
-                (!isExpert && !plan)
+                !features.length ||
+                !trainEnd ||
+                !validationEnd ||
+                (!plan && !manualBoundaries.current)
               }
             >
               {creating ? <LoaderCircle className="dm-spin" size={17} /> : <Play size={17} />} 학습

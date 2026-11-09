@@ -30,6 +30,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Play,
   Radio,
   ShieldCheck,
   X,
@@ -52,11 +53,13 @@ const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const CostsPage = lazy(() => import('./pages/CostsPage'));
 const MonitorPage = lazy(() => import('./pages/MonitorPage'));
+const SimulationPage = lazy(() => import('./pages/SimulationPage'));
 const NAV = [
   { to: '/', label: '작업실', icon: LayoutDashboard },
   { to: '/data', label: '데이터', icon: Database },
   { to: '/models', label: '모델 학습 선택', icon: FlaskConical },
   { to: '/monitor', label: '실시간 모니터링', icon: Radio },
+  { to: '/simulation', label: '시뮬레이션', icon: Play },
   { to: '/review', label: '시뮬레이션 보고서', icon: ChartNoAxesCombined },
   { to: '/reports', label: '보고서', icon: FileText },
   { to: '/costs', label: '비용 비교', icon: Coins },
@@ -429,6 +432,7 @@ function AuthenticatedRoutes() {
             <Route path="data" element={<DataPage />} />
             <Route path="models" element={<ModelsPage />} />
             <Route path="monitor" element={<MonitorPage />} />
+            <Route path="simulation" element={<SimulationPage />} />
             <Route path="review" element={<ReviewPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="costs" element={<CostsPage />} />

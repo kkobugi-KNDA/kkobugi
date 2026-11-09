@@ -18,6 +18,7 @@ from app.api.reports import router as reports_router
 from app.api.reviews import router as reviews_router
 from app.api.runs import router as runs_router
 from app.api.series import router as series_router
+from app.api.simulations import router as simulations_router
 from app.api.training import router as training_router
 from app.config import Settings
 from app.db import Database
@@ -111,6 +112,7 @@ def create_app(
     application.include_router(replays_router)
     application.include_router(assistant_router)
     application.include_router(reports_router)
+    application.include_router(simulations_router)
     if settings.frontend_dist_path is not None:
         application.mount("/", FrontendFiles(settings.frontend_dist_path), name="frontend")
     return application
