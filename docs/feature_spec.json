@@ -1,5 +1,6 @@
 {
   "generated_by": "notebooks/08_pump_rolling_features.ipynb",
+  "how_to_build": "from src.pump_features import load_prepared, build_features; features = build_features(load_prepared()['values'])",
   "source_rows": 220320,
   "feature_count": 882,
   "meta_columns": {

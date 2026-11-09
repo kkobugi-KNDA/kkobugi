@@ -1,0 +1,22 @@
+name: kkobugi
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pip
+  - ipykernel
+  - numpy
+  - pandas
+  - matplotlib-base
+  - pyarrow
+  - scikit-learn
+  - lightgbm=4.6
+  - pytorch=*=cpu*
+  - py-xgboost=*=cpu*
+  - shap
+  - faiss-cpu
+  - streamlit
+  - pip:
+      - langchain>=1,<2
+      - langchain-openai>=1,<2

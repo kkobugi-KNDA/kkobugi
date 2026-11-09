@@ -1,0 +1,252 @@
+{
+  "generated_by": "notebooks/09_pump_validation_split.ipynb",
+  "period": {
+    "start": "2018-04-01 00:00:00",
+    "end": "2018-08-31 23:59:00",
+    "rows": 220320
+  },
+  "method": "고장 사건 단위 전진 검증 (expanding window). 날짜 기준 단일 분할은 쓰지 않음",
+  "rule": [
+    "결측 처리·스케일링·피처 선택·이상치 기준은 폴드의 학습 구간에서만 계산",
+    "모델 입력에는 전체 기간 선형보간 대신 전방 채움 사용 (08 피처와 동일)",
+    "한 고장 사건의 정상·고장·회복 구간은 같은 쪽에 둠",
+    "시험 구간 결과로 모델·임계값을 고치지 않음",
+    "결과는 고장 사건 단위(적중 건수·선행 시간·무고장 구간 오경보)로도 정리"
+  ],
+  "failure_events": [
+    {
+      "event": 1,
+      "start": "2018-04-12 21:55:00",
+      "recovery_end": "2018-04-13 13:40:00",
+      "recovery_minutes": 945
+    },
+    {
+      "event": 2,
+      "start": "2018-04-18 00:30:00",
+      "recovery_end": "2018-04-20 04:21:00",
+      "recovery_minutes": 3111
+    },
+    {
+      "event": 3,
+      "start": "2018-05-19 03:18:00",
+      "recovery_end": "2018-05-20 01:11:00",
+      "recovery_minutes": 1313
+    },
+    {
+      "event": 4,
+      "start": "2018-05-25 00:30:00",
+      "recovery_end": "2018-05-25 10:36:00",
+      "recovery_minutes": 606
+    },
+    {
+      "event": 5,
+      "start": "2018-06-28 22:00:00",
+      "recovery_end": "2018-07-04 17:51:00",
+      "recovery_minutes": 8391
+    },
+    {
+      "event": 6,
+      "start": "2018-07-08 00:11:00",
+      "recovery_end": "2018-07-08 00:53:00",
+      "recovery_minutes": 42
+    },
+    {
+      "event": 7,
+      "start": "2018-07-25 14:00:00",
+      "recovery_end": "2018-07-25 15:16:00",
+      "recovery_minutes": 76
+    }
+  ],
+  "event_folds": {
+    "columns": [
+      "fold_event_3",
+      "fold_event_4",
+      "fold_event_5",
+      "fold_event_6",
+      "fold_event_7",
+      "fold_after_last"
+    ],
+    "values": [
+      "train",
+      "test",
+      "none"
+    ],
+    "definition": "시험 구간 = 직전 고장 회복 종료 다음 분 ~ 해당 고장 회복 종료, 학습 구간 = 자료 시작 ~ 그 이전",
+    "folds": [
+      {
+        "fold": "fold_event_3",
+        "test_failure": "2018-05-19 03:18:00",
+        "train": [
+          "2018-04-01 00:00:00",
+          "2018-04-20 04:21:00"
+        ],
+        "test": [
+          "2018-04-20 04:22:00",
+          "2018-05-20 01:11:00"
+        ],
+        "train_failures": 2,
+        "counts": {
+          "train": {
+            "BROKEN": 2,
+            "NORMAL": 23566,
+            "RECOVERING": 4054,
+            "rows": 27622,
+            "failures_started": 2
+          },
+          "test": {
+            "BROKEN": 1,
+            "NORMAL": 41697,
+            "RECOVERING": 1312,
+            "rows": 43010,
+            "failures_started": 1
+          }
+        }
+      },
+      {
+        "fold": "fold_event_4",
+        "test_failure": "2018-05-25 00:30:00",
+        "train": [
+          "2018-04-01 00:00:00",
+          "2018-05-20 01:11:00"
+        ],
+        "test": [
+          "2018-05-20 01:12:00",
+          "2018-05-25 10:36:00"
+        ],
+        "train_failures": 3,
+        "counts": {
+          "train": {
+            "BROKEN": 3,
+            "NORMAL": 65263,
+            "RECOVERING": 5366,
+            "rows": 70632,
+            "failures_started": 3
+          },
+          "test": {
+            "BROKEN": 1,
+            "NORMAL": 7159,
+            "RECOVERING": 605,
+            "rows": 7765,
+            "failures_started": 1
+          }
+        }
+      },
+      {
+        "fold": "fold_event_5",
+        "test_failure": "2018-06-28 22:00:00",
+        "train": [
+          "2018-04-01 00:00:00",
+          "2018-05-25 10:36:00"
+        ],
+        "test": [
+          "2018-05-25 10:37:00",
+          "2018-07-04 17:51:00"
+        ],
+        "train_failures": 4,
+        "counts": {
+          "train": {
+            "BROKEN": 4,
+            "NORMAL": 72422,
+            "RECOVERING": 5971,
+            "rows": 78397,
+            "failures_started": 4
+          },
+          "test": {
+            "BROKEN": 1,
+            "NORMAL": 49644,
+            "RECOVERING": 8390,
+            "rows": 58035,
+            "failures_started": 1
+          }
+        }
+      },
+      {
+        "fold": "fold_event_6",
+        "test_failure": "2018-07-08 00:11:00",
+        "train": [
+          "2018-04-01 00:00:00",
+          "2018-07-04 17:51:00"
+        ],
+        "test": [
+          "2018-07-04 17:52:00",
+          "2018-07-08 00:53:00"
+        ],
+        "train_failures": 5,
+        "counts": {
+          "train": {
+            "BROKEN": 5,
+            "NORMAL": 122066,
+            "RECOVERING": 14361,
+            "rows": 136432,
+            "failures_started": 5
+          },
+          "test": {
+            "BROKEN": 1,
+            "NORMAL": 4700,
+            "RECOVERING": 41,
+            "rows": 4742,
+            "failures_started": 1
+          }
+        }
+      },
+      {
+        "fold": "fold_event_7",
+        "test_failure": "2018-07-25 14:00:00",
+        "train": [
+          "2018-04-01 00:00:00",
+          "2018-07-08 00:53:00"
+        ],
+        "test": [
+          "2018-07-08 00:54:00",
+          "2018-07-25 15:16:00"
+        ],
+        "train_failures": 6,
+        "counts": {
+          "train": {
+            "BROKEN": 6,
+            "NORMAL": 126766,
+            "RECOVERING": 14402,
+            "rows": 141174,
+            "failures_started": 6
+          },
+          "test": {
+            "BROKEN": 1,
+            "NORMAL": 25267,
+            "RECOVERING": 75,
+            "rows": 25343,
+            "failures_started": 1
+          }
+        }
+      },
+      {
+        "fold": "fold_after_last",
+        "test_failure": null,
+        "train": [
+          "2018-04-01 00:00:00",
+          "2018-07-25 15:16:00"
+        ],
+        "test": [
+          "2018-07-25 15:17:00",
+          "2018-08-31 23:59:00"
+        ],
+        "train_failures": 7,
+        "counts": {
+          "train": {
+            "BROKEN": 7,
+            "NORMAL": 152033,
+            "RECOVERING": 14477,
+            "rows": 166517,
+            "failures_started": 7
+          },
+          "test": {
+            "BROKEN": 0,
+            "NORMAL": 53803,
+            "RECOVERING": 0,
+            "rows": 53803,
+            "failures_started": 0
+          }
+        }
+      }
+    ]
+  }
+}
