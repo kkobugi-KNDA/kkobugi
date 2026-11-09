@@ -7,7 +7,7 @@ from sqlite3 import Connection
 from fastapi import Request
 from sqlalchemy import URL, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-from sqlalchemy.pool import ConnectionPoolEntry, StaticPool
+from sqlalchemy.pool import ConnectionPoolEntry, QueuePool, StaticPool
 
 
 class Base(DeclarativeBase):
@@ -16,22 +16,30 @@ class Base(DeclarativeBase):
 
 class Database:
     def __init__(self, path: Path):
-        in_memory = str(path) == ":memory:"
-        if not in_memory:
+        is_memory_database = str(path) == ":memory:"
+
+        if not is_memory_database:
             path = Path(path).expanduser().resolve()
+
             path.parent.mkdir(parents=True, exist_ok=True)
+        # 메모리 DB는 여러 요청 스레드가 같은 연결을 사용해야 내용이 유지된다.
+        pool_class = StaticPool if is_memory_database else QueuePool
+
         self.engine = create_engine(
-            URL.create("sqlite+pysqlite", database=":memory:" if in_memory else str(path)),
+            URL.create("sqlite+pysqlite", database=str(path)),
             connect_args={"check_same_thread": False, "timeout": 5},
-            **({"poolclass": StaticPool} if in_memory else {}),
+            poolclass=pool_class,
         )
 
         @event.listens_for(self.engine, "connect")
         def configure_connection(connection: Connection, _: ConnectionPoolEntry) -> None:
             cursor = connection.cursor()
+
+            # 참조 무결성을 확인하고, 다른 요청의 쓰기 작업을 최대 5초 기다린다.
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA busy_timeout=5000")
-            if not in_memory:
+            if not is_memory_database:
+                # 파일 DB는 읽기와 쓰기가 서로 덜 막히도록 WAL을 사용한다.
                 cursor.execute("PRAGMA journal_mode=WAL")
             cursor.close()
 
@@ -48,5 +56,6 @@ class Database:
 
 
 def get_db(request: Request) -> Iterator[Session]:
-    with request.app.state.database.session_factory() as session:
-        yield session
+    # 요청이 끝나면 연결을 반환한다. 로그인 세션과는 다른 DB 작업 단위다.
+    with request.app.state.database.session_factory() as database_session:
+        yield database_session
