@@ -111,7 +111,7 @@ export default function DataPage() {
       return;
     }
     if (normalLabel === abnormalLabel) {
-      setUploadError('Normal과 UnNormal의 원본 라벨 값은 서로 달라야 해요.');
+      setUploadError('Normal과 Abnormal의 원본 라벨 값은 서로 달라야 해요.');
       return;
     }
     if (
@@ -352,7 +352,7 @@ export default function DataPage() {
                           {label === detail.dataset.normal_label
                             ? 'Normal'
                             : label === detail.dataset.abnormal_label
-                              ? 'UnNormal'
+                              ? 'Abnormal'
                               : '미지정'}{' '}
                           <code>{label}</code>
                         </span>
@@ -581,7 +581,7 @@ export default function DataPage() {
                 setAbnormalLabel('1');
               }}
             >
-              Normal=0 / UnNormal=1 적용
+              Normal=0 / Abnormal=1 적용
             </button>
           </div>
           <div className="dm-form-grid">
@@ -595,7 +595,7 @@ export default function DataPage() {
                 disabled={uploading}
               />
             </Field>
-            <Field label="UnNormal 원본 값" htmlFor="dm-abnormal">
+            <Field label="Abnormal 원본 값" htmlFor="dm-abnormal">
               <input
                 id="dm-abnormal"
                 className="input"

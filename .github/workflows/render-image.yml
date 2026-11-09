@@ -25,7 +25,7 @@ jobs:
   smoke:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -94,7 +94,7 @@ jobs:
             --disable-pip-version-check --only-binary=:all: pandas==3.1.1 httpx==0.28.1
 
       - name: Full public dataset capacity
-        timeout-minutes: 12
+        timeout-minutes: 18
         run: |
           "$RUNNER_TEMP/kkobugi-capacity-venv/bin/python" .github/scripts/render_capacity.py \
             --container "$CONTAINER_NAME" --report-dir "$CAPACITY_ARTIFACTS"

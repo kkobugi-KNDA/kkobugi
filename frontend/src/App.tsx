@@ -31,7 +31,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Play,
-  Radio,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -56,13 +55,11 @@ const ModelsPage = lazy(() => import('./pages/ModelsPage'));
 const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const CostsPage = lazy(() => import('./pages/CostsPage'));
-const MonitorPage = lazy(() => import('./pages/MonitorPage'));
 const SimulationPage = lazy(() => import('./pages/SimulationPage'));
 const NAV = [
   { to: '/', label: '작업실', icon: LayoutDashboard },
   { to: '/data', label: '데이터', icon: Database },
   { to: '/models', label: '모델 학습 선택', icon: FlaskConical },
-  { to: '/monitor', label: '실시간 모니터링', icon: Radio },
   { to: '/simulation', label: '시뮬레이션', icon: Play },
   { to: '/review', label: '시뮬레이션 보고서', icon: ChartNoAxesCombined },
   { to: '/reports', label: '보고서', icon: FileText },
@@ -468,7 +465,7 @@ function Shell() {
               ],
               [
                 '03',
-                '실시간 모니터링',
+                '시뮬레이션',
                 '학습한 모델의 최종 평가를 마치고 생성한 데이터를 재생하세요. 점검 신호와 직접 확인한 사실을 구분해 남깁니다.',
               ],
               [
@@ -516,7 +513,8 @@ function AuthenticatedRoutes() {
             <Route index element={<DashboardPage />} />
             <Route path="data" element={<DataPage />} />
             <Route path="models" element={<ModelsPage />} />
-            <Route path="monitor" element={<MonitorPage />} />
+            {/* 예전 모니터링 주소도 같은 시뮬레이션 화면으로 연결한다. */}
+            <Route path="monitor" element={<Navigate to="/simulation" replace />} />
             <Route path="simulation" element={<SimulationPage />} />
             <Route path="review" element={<ReviewPage />} />
             <Route path="reports" element={<ReportsPage />} />

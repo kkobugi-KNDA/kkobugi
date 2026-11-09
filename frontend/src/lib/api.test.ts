@@ -1,8 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from './api';
+import { axRequest } from './ax-api';
 
 afterEach(() => vi.unstubAllGlobals());
 describe('authenticated API transport', () => {
+  it('explains an HTML gateway error without calling it invalid CSV or sending another request', async () => {
+    const fetcher = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(new Response('<h1>Bad Gateway</h1>', { status: 502 })),
+      );
+
+    vi.stubGlobal('fetch', fetcher);
+    for (const load of [
+      () => api.datasets(),
+      () => api.datasetFile('existing'),
+      () => axRequest('/simulations'),
+    ]) {
+      await expect(load()).rejects.toMatchObject({
+        status: 502,
+        message: expect.stringContaining('서버가 잠시 응답하지 못하고'),
+      });
+    }
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
   it('sends cookie credentials and the required mutation header without storing a token', async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

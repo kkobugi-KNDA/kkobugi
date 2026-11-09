@@ -12,6 +12,7 @@ from xml.sax.saxutils import escape
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.memory_work import MemoryWorkBusy, MemoryWorkGate
 from app.schemas.assistant import (
     AssistantRequest,
     AssistantResponse,
@@ -305,8 +306,10 @@ def _write_pdf(preview: ReportPreview, destination: Path, settings: Settings) ->
 class ReportManager:
     """같은 설명의 재요청은 기존 보고서를 돌려주고, 파일 작업은 한 개씩 처리한다."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, memory_gate: MemoryWorkGate | None = None):
         self.settings = settings
+
+        self.memory_gate = memory_gate if memory_gate is not None else MemoryWorkGate()
 
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kkobugi-report")
 
@@ -381,19 +384,26 @@ class ReportManager:
         path = private_path(self.settings, "reports", owner_id, report.id)
 
         try:
-            report.status = "generating"
-            report.updated_at = int(time.time())
-            save_json(path, {"owner_id": owner_id, "response": report.model_dump(mode="json")})
-            docx_path = path.with_suffix(".docx")
+            # PDF 글꼴·Word 생성이 학습이나 큰 CSV 조회와 동시에 메모리를 점유하지 않는다.
+            with self.memory_gate.sync_slot():
+                report.status = "generating"
+                report.updated_at = int(time.time())
+                save_json(path, {"owner_id": owner_id, "response": report.model_dump(mode="json")})
+                docx_path = path.with_suffix(".docx")
 
-            pdf_path = path.with_suffix(".pdf")
+                pdf_path = path.with_suffix(".pdf")
 
-            _write_docx(report.preview, docx_path.with_suffix(".tmp.docx"))
-            _write_pdf(report.preview, pdf_path.with_suffix(".tmp.pdf"), self.settings)
-            docx_path.with_suffix(".tmp.docx").replace(docx_path)
-            pdf_path.with_suffix(".tmp.pdf").replace(pdf_path)
-            report.status = "completed"
-            report.error_message = None
+                _write_docx(report.preview, docx_path.with_suffix(".tmp.docx"))
+                _write_pdf(report.preview, pdf_path.with_suffix(".tmp.pdf"), self.settings)
+                docx_path.with_suffix(".tmp.docx").replace(docx_path)
+                pdf_path.with_suffix(".tmp.pdf").replace(pdf_path)
+                report.status = "completed"
+                report.error_message = None
+        except MemoryWorkBusy:
+            report.status = "failed"
+            report.error_message = (
+                "다른 분석 작업이 진행 중이에요. 잠시 후 보고서를 다시 요청하세요."
+            )
         except Exception:
             # 원본 사용자 자료는 건드리지 않으며 내부 경로와 예외 원문을 노출하지 않는다.
             report.status = "failed"

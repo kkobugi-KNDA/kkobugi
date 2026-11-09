@@ -307,7 +307,7 @@ export default function DashboardPage() {
         <section className="surface validation-card">
           <header className="section-heading">
             <div>
-              <span className="eyebrow">NEXT / MONITORING</span>
+              <span className="eyebrow">NEXT / SIMULATION</span>
               <h2>학습에서 점검으로</h2>
             </div>
           </header>
@@ -315,8 +315,8 @@ export default function DashboardPage() {
             title="학습한 모델로 실시간 신호를 확인하세요"
             description="생성한 데이터를 차례로 재생하고, 점검 신호를 문헌·현장 관찰·비용·보고서로 연결합니다."
             action={
-              <Link to="/monitor" className="button primary">
-                실시간 모니터링 <ArrowRight size={16} />
+              <Link to="/simulation" className="button primary">
+                시뮬레이션 <ArrowRight size={16} />
               </Link>
             }
           />

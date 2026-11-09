@@ -14,6 +14,16 @@ from app.config import Settings
 from app.services import assistant
 
 
+@pytest.fixture(autouse=True)
+def configured_chat_provider(monkeypatch, run_client):
+    # 성공 경로는 외부 응답을 명시적으로 흉내 낸다. 실제 API 과금은 발생하지 않는다.
+    return provider(
+        monkeypatch,
+        run_client,
+        {"answer": "안녕하세요. 포석호예요. 점검 내용을 함께 확인해요.", "citation_ids": []},
+    )
+
+
 @pytest.fixture
 def run_settings(tmp_path):
     # 실제 .env의 비밀키나 모델을 사용하지 않아 단위 테스트가 과금 요청을 만들지 않는다.
@@ -44,7 +54,7 @@ def test_blank_cost_and_no_model_do_not_block_chat(run_client, costs):
 
     assert "안녕하세요" in answer["answer"]
     assert "포석호" in answer["answer"]
-    assert answer["source_mode"] == "retrieval"
+    assert answer["source_mode"] == "llm"
     assert answer["model_snapshot"] is None
     assert answer["report_message_id"] is None
     if costs is None:
@@ -60,7 +70,16 @@ def test_blank_cost_and_no_model_do_not_block_chat(run_client, costs):
     assert json.loads(saved_path.read_text("utf-8"))["owner_id"] == 1
 
 
-def test_followup_uses_previous_symptom_to_retrieve_relevant_sources(run_client):
+def test_followup_uses_previous_symptom_to_retrieve_relevant_sources(run_client, monkeypatch):
+    calls = provider(
+        monkeypatch,
+        run_client,
+        {
+            "answer": "축봉 방식에 맞는 누수 위치를 확인해요. [DOE-SEALS]",
+            "citation_ids": ["DOE-SEALS"],
+        },
+    )
+
     response = send_chat(
         run_client,
         "그럼 다음에는 뭘 확인할까?",
@@ -74,11 +93,19 @@ def test_followup_uses_previous_symptom_to_retrieve_relevant_sources(run_client)
     answer = response.json()
 
     assert "DOE-SEALS" in {item["id"] for item in answer["citations"]}
-    assert "앞서 물어본" in answer["answer"]
     assert "축봉" in answer["answer"]
+    assert any(
+        message["content"] == "메카니컬 씰 주변에 누수가 보여요."
+        for message in calls[0]["json"]["messages"]
+    )
 
 
-def test_app_usage_question_does_not_require_model_or_quote(run_client):
+def test_app_usage_question_does_not_require_model_or_quote(run_client, monkeypatch):
+    provider(
+        monkeypatch,
+        run_client,
+        {"answer": "CSV 연결 후 실시간 시뮬레이션 시작을 눌러보세요.", "citation_ids": []},
+    )
     response = send_chat(run_client, "시뮬레이션 시작은 어떻게 해?")
 
     assert response.status_code == 201
@@ -114,9 +141,7 @@ def test_simulation_context_is_current_replay_state_not_confirmed_fault_count(ru
     "question",
     ["비용 입력 없이 지금 시뮬레이션 상태를 설명해줘", "지금 몇 행까지 받았어?"],
 )
-def test_simulation_status_fallback_answers_current_counts_without_unrelated_checks(
-    run_client, question
-):
+def test_simulation_status_reply_uses_current_counts_without_unrelated_checks(run_client, question):
     response = send_chat(
         run_client,
         question,
@@ -132,7 +157,7 @@ def test_simulation_status_fallback_answers_current_counts_without_unrelated_che
     assert response.status_code == 201
     answer = response.json()
 
-    assert answer["source_mode"] == "retrieval"
+    assert answer["source_mode"] == "llm"
     assert "일시 정지" in answer["answer"]
     assert "43,200행 중 1,200행" in answer["answer"]
     assert "점검 신호는 9행" in answer["answer"]
@@ -231,7 +256,9 @@ def test_chat_requires_login_and_browser_write_headers(run_client):
     assert send_chat(run_client).status_code == 401
 
 
-def provider(monkeypatch, client, result=None, *, status=200):
+def provider(
+    monkeypatch, client, result=None, *, status=200, error_message="", payload=None, failure=None
+):
     settings = client.app.state.settings
 
     settings.anthropic_api_key = SecretStr("test-only-chat-secret")
@@ -250,13 +277,17 @@ def provider(monkeypatch, client, result=None, *, status=200):
 
         def post(self, url, **request):
             calls.append({"url": url, **request})
+            if failure is not None:
+                raise failure
             content = {
                 "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]
             }
 
+            if status >= 400:
+                content = {"error": {"message": error_message}}
             return httpx.Response(
                 status,
-                json=content,
+                json=payload if payload is not None else content,
                 request=httpx.Request("POST", url),
             )
 
@@ -315,18 +346,100 @@ def test_unverified_provider_prices_faults_life_or_sources_are_not_used(
     provider(monkeypatch, run_client, result)
     response = send_chat(run_client, "축봉 누수를 확인하고 싶어")
 
-    assert response.status_code == 201
-    assert response.json()["source_mode"] == "retrieval"
-    assert response.json()["answer"] != result["answer"]
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "AI_INVALID_RESPONSE"
+    assert "answer" not in response.json()
     assert "200,000원" not in response.text
     assert "test-only-chat-secret" not in response.text
 
 
-def test_credit_or_provider_failure_does_not_block_chat(run_client, monkeypatch):
-    provider(monkeypatch, run_client, {}, status=400)
+@pytest.mark.parametrize(
+    ("status", "message", "expected_status", "code"),
+    [
+        (400, "Your credit balance is too low. test-only-chat-secret", 503, "AI_CREDIT_REQUIRED"),
+        (401, "Invalid API key test-only-chat-secret", 503, "AI_AUTH_ERROR"),
+        (403, "Access denied test-only-chat-secret", 503, "AI_AUTH_ERROR"),
+        (404, "model missing test-only-chat-secret", 503, "AI_MODEL_UNAVAILABLE"),
+        (400, "model is not available test-only-chat-secret", 503, "AI_MODEL_UNAVAILABLE"),
+        (429, "Rate limit test-only-chat-secret", 503, "AI_BUSY"),
+        (529, "Overloaded test-only-chat-secret", 503, "AI_BUSY"),
+        (500, "Internal failure test-only-chat-secret", 502, "AI_UNAVAILABLE"),
+        (400, "Unknown invalid request test-only-chat-secret", 502, "AI_UNAVAILABLE"),
+    ],
+)
+def test_provider_failure_reports_real_reason_without_fabricating_reply(
+    run_client, monkeypatch, status, message, expected_status, code
+):
+    provider(monkeypatch, run_client, status=status, error_message=message)
     response = send_chat(run_client, "비용 없이 대화해도 돼?")
 
-    assert response.status_code == 201
-    assert response.json()["source_mode"] == "retrieval"
-    assert response.json()["report_message_id"] is None
-    assert any("외부 AI 답변을 사용하지 않고" in line for line in response.json()["limitations"])
+    assert response.status_code == expected_status
+    assert response.json()["error"]["code"] == code
+    assert "answer" not in response.json()
+    assert "test-only-chat-secret" not in response.text
+    assert message not in response.text
+    assert not (run_client.app.state.settings.dataset_storage_path.parent / "chat" / "1").exists()
+
+
+@pytest.mark.parametrize("missing", ["key", "model", "blank-key"])
+def test_missing_configuration_is_not_a_successful_retrieval_reply(run_client, missing):
+    settings = run_client.app.state.settings
+
+    if missing == "model":
+        settings.anthropic_model = ""
+    else:
+        settings.anthropic_api_key = None if missing == "key" else SecretStr("   ")
+    response = send_chat(run_client)
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "AI_NOT_CONFIGURED"
+    assert "answer" not in response.json()
+
+
+@pytest.mark.parametrize(
+    ("failure", "status"),
+    [
+        (httpx.ReadTimeout("private provider details"), 504),
+        (httpx.ConnectError("private provider details"), 503),
+    ],
+)
+def test_transport_failure_keeps_details_private_and_does_not_reply(
+    run_client, monkeypatch, failure, status
+):
+    provider(monkeypatch, run_client, failure=failure)
+    response = send_chat(run_client)
+
+    assert response.status_code == status
+    assert response.json()["error"]["code"] == "AI_UNAVAILABLE"
+    assert "private provider details" not in response.text
+    assert "answer" not in response.json()
+
+
+@pytest.mark.parametrize(
+    "payload", [{"content": []}, {"content": [{"type": "text", "text": "not json"}]}]
+)
+def test_malformed_provider_reply_is_a_retryable_error(run_client, monkeypatch, payload):
+    provider(monkeypatch, run_client, payload=payload)
+    response = send_chat(run_client)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "AI_INVALID_RESPONSE"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "고장이 확정된 건 아니에요. 현장 점검으로 원인을 확인해요.",
+        "고장이 확정되었다고 볼 수 없어요. 누수 위치부터 확인해요.",
+        "고장 확정은 현장 확인 후에 판단해요.",
+    ],
+)
+def test_qualified_fault_explanations_are_not_mistaken_for_confirmed_faults(
+    run_client, monkeypatch, answer
+):
+    provider(monkeypatch, run_client, {"answer": answer, "citation_ids": []})
+    response = send_chat(run_client, "이게 고장이야?")
+
+    assert response.status_code == 201, response.text
+    assert response.json()["source_mode"] == "llm"
+    assert response.json()["answer"] == answer

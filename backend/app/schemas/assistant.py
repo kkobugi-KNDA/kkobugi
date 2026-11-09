@@ -106,7 +106,7 @@ class ModelSnapshot(BaseModel):
 
     score_100: float | None
 
-    score_formula: str = "UnNormal F1 × 100"
+    score_formula: str = "Abnormal F1 × 100"
 
     feature_columns: list[str]
 

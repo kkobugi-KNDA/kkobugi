@@ -2,11 +2,10 @@
 
 from bisect import bisect_left, bisect_right
 from collections import Counter
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 
 import numpy as np
-import pandas as pd
 from fastapi import HTTPException
 from pydantic import ValidationError
 from threadpoolctl import threadpool_limits
@@ -27,17 +26,14 @@ from app.schemas.series import (
 )
 from app.services import datasets as dataset_service
 from app.services import modeling
-
-
-@dataclass
-class SourceSeries:
-    timestamps: list[datetime]
-
-    values: np.ndarray
-
-    raw_labels: list[str]
-
-    codes: np.ndarray
+from app.services.series_source import (
+    SourceIndex,
+    cadence_seconds,
+    load_index,
+    time_number,
+    validate_channels,
+    value_batches,
+)
 
 
 def _series_error(status: int, code: str, message: str) -> HTTPException:
@@ -81,65 +77,6 @@ def normalize_time_bounds(
     return start_time, end_time
 
 
-def _load_source(dataset: Dataset, settings: Settings, channels: list[str]) -> SourceSeries:
-    inspection = dataset_service.dataset_detail(dataset).inspection
-
-    if not inspection.is_valid:
-        raise _series_error(422, "DATASET_NEEDS_REVIEW", "CSV 검사 항목을 먼저 확인하세요.")
-    if (
-        not channels
-        or len(channels) != len(set(channels))
-        or any(channel not in inspection.channels for channel in channels)
-    ):
-        raise _series_error(422, "INVALID_CHANNEL", "중복 없이 등록된 숫자 채널을 선택하세요.")
-    try:
-        source_path = dataset_service.dataset_file_path(dataset, settings)
-
-        if modeling._file_sha256(source_path) != dataset.sha256:
-            raise _series_error(409, "DATASET_CHANGED", "등록 당시와 CSV 내용이 다릅니다.")
-        source_frame = pd.read_csv(
-            source_path,
-            encoding="utf-8-sig",
-            usecols=[dataset.timestamp_column, dataset.label_column, *channels],
-            dtype={dataset.timestamp_column: str, dataset.label_column: str},
-            keep_default_na=False,
-        )
-
-        timestamps = [
-            datetime.fromisoformat(str(value).strip())
-            for value in source_frame[dataset.timestamp_column]
-        ]
-
-        if not timestamps or len(timestamps) != inspection.row_count:
-            raise ValueError("시각·행 개수 오류")
-        if any(
-            (timestamp.tzinfo is not None) != (inspection.timezone_mode == "aware")
-            for timestamp in timestamps
-        ):
-            raise ValueError("시간대 오류")
-        if inspection.timezone_mode == "aware":
-            timestamps = [timestamp.astimezone(UTC) for timestamp in timestamps]
-
-        if any(left >= right for left, right in zip(timestamps, timestamps[1:])):
-            raise ValueError("시각 순서 오류")
-        values = source_frame[channels].to_numpy(dtype=float)
-
-        raw_labels = source_frame[dataset.label_column].astype(str).tolist()
-
-        label_mapping = {dataset.normal_label: 0, dataset.abnormal_label: 1}
-
-        codes = np.array([label_mapping[label.strip()] for label in raw_labels], dtype=int)
-
-        if not np.isfinite(values).all():
-            raise ValueError("채널 값 오류")
-        return SourceSeries(
-            timestamps=timestamps, values=values, raw_labels=raw_labels, codes=codes
-        )
-    except (OSError, KeyError, ValueError, OverflowError, pd.errors.ParserError):
-        # 내부 파일 경로나 역직렬화 오류 원문은 응답에 넣지 않는다.
-        raise _series_error(503, "SERIES_UNAVAILABLE", "CSV 시계열을 읽지 못했습니다.") from None
-
-
 def _row_bounds(
     timestamps: list[datetime], start_time: datetime | None, end_time: datetime | None
 ) -> tuple[int, int]:
@@ -172,6 +109,71 @@ def _sample_rows(values: np.ndarray, start_row: int, end_row: int, max_points: i
     return sorted(selected_rows)
 
 
+def _series_points(
+    dataset: Dataset,
+    settings: Settings,
+    source: SourceIndex,
+    channels: list[str],
+    start_row: int,
+    end_row: int,
+    max_points: int,
+) -> list[SeriesPoint]:
+    # 원본 전체 값 배열을 만들지 않고 기존 min/max 버킷의 극값만 보관한다.
+    downsample = end_row - start_row > max_points
+
+    bucket_count = (max_points - 2) // (2 * len(channels)) if downsample else 0
+
+    boundaries = np.linspace(start_row + 1, end_row - 1, bucket_count + 1, dtype=int)
+
+    selected: dict[int, SeriesPoint] = {}
+
+    minimums: list[tuple[float, SeriesPoint] | None] = [None] * len(channels)
+
+    maximums: list[tuple[float, SeriesPoint] | None] = [None] * len(channels)
+
+    bucket = 0
+
+    def keep_extremes() -> None:
+        for item in [*minimums, *maximums]:
+            if item is not None:
+                selected[item[1].row_index] = item[1]
+
+    for batch in value_batches(dataset, settings, source, channels, start_row, end_row):
+        for batch_row, values in enumerate(batch.values):
+            row = batch.start_row + batch_row
+
+            if downsample and start_row < row < end_row - 1:
+                if row >= boundaries[bucket + 1]:
+                    keep_extremes()
+                    minimums = [None] * len(channels)
+                    maximums = [None] * len(channels)
+                    bucket += 1
+                if all(
+                    minimums[index] is not None
+                    and minimums[index][0] <= value <= maximums[index][0]
+                    for index, value in enumerate(values)
+                ):
+                    continue
+            point = SeriesPoint(
+                row_index=row,
+                timestamp=format_timestamp(source.timestamp(row)),
+                values=dict(zip(channels, values.tolist(), strict=True)),
+                actual_label=batch.raw_labels[batch_row],
+                actual_code=int(source.codes[row]),
+            )
+
+            if not downsample or row in {start_row, end_row - 1}:
+                selected[row] = point
+                continue
+            for index, value in enumerate(values):
+                if minimums[index] is None or value < minimums[index][0]:
+                    minimums[index] = (float(value), point)
+                if maximums[index] is None or value > maximums[index][0]:
+                    maximums[index] = (float(value), point)
+    keep_extremes()
+    return [selected[row] for row in sorted(selected)]
+
+
 def get_series(
     dataset: Dataset,
     settings: Settings,
@@ -184,11 +186,13 @@ def get_series(
 
     start_time, end_time = normalize_time_bounds(inspection.timezone_mode, start_time, end_time)
 
-    source = _load_source(dataset, settings, channels)
+    validate_channels(dataset, channels)
 
-    start_row, end_row = _row_bounds(source.timestamps, start_time, end_time)
+    source = load_index(dataset, settings)
 
-    selected_rows = _sample_rows(source.values, start_row, end_row, max_points)
+    start_row, end_row = source.bounds(start_time, end_time)
+
+    points = _series_points(dataset, settings, source, channels, start_row, end_row, max_points)
 
     matched_count = end_row - start_row
 
@@ -199,22 +203,13 @@ def get_series(
         normal_label=dataset.normal_label,
         abnormal_label=dataset.abnormal_label,
         timezone_mode=inspection.timezone_mode,
-        start_time=format_timestamp(source.timestamps[start_row]) if matched_count else None,
-        end_time=format_timestamp(source.timestamps[end_row - 1]) if matched_count else None,
+        start_time=format_timestamp(source.timestamp(start_row)) if matched_count else None,
+        end_time=format_timestamp(source.timestamp(end_row - 1)) if matched_count else None,
         matched_count=matched_count,
-        returned_count=len(selected_rows),
-        downsampled=matched_count > len(selected_rows),
-        sampling_method="min_max" if matched_count > len(selected_rows) else "none",
-        points=[
-            SeriesPoint(
-                row_index=row_index,
-                timestamp=format_timestamp(source.timestamps[row_index]),
-                values=dict(zip(channels, source.values[row_index].tolist(), strict=True)),
-                actual_label=source.raw_labels[row_index],
-                actual_code=int(source.codes[row_index]),
-            )
-            for row_index in selected_rows
-        ],
+        returned_count=len(points),
+        downsampled=matched_count > len(points),
+        sampling_method="min_max" if matched_count > len(points) else "none",
+        points=points,
     )
 
 
@@ -268,6 +263,62 @@ def _intervals(
     return intervals, cadence
 
 
+def _interval_page(
+    source: SourceIndex,
+    row_codes: Iterable[tuple[int, int]],
+    code: int,
+    limit: int,
+    offset: int,
+) -> tuple[list[TimeInterval], int, float | None]:
+    # 구간 총수는 끝까지 세되 응답 페이지 밖의 구간 객체는 보관하지 않는다.
+    cadence = cadence_seconds(source)
+
+    cadence_microseconds = int(round(cadence * 1_000_000)) if cadence is not None else None
+
+    items = []
+
+    total = 0
+
+    current: TimeInterval | None = None
+
+    def keep_interval(interval: TimeInterval) -> None:
+        nonlocal total
+        if offset <= total < offset + limit:
+            items.append(interval)
+        total += 1
+
+    for row, row_code in row_codes:
+        if row_code != code:
+            if current is not None:
+                keep_interval(current)
+                current = None
+            continue
+        if (
+            current is not None
+            and current.end_row == row
+            and cadence_microseconds is not None
+            and int(source.times[row] - source.times[row - 1]) == cadence_microseconds
+        ):
+            current.end_row = row + 1
+            current.end_time = format_timestamp(source.timestamp(row))
+            current.row_count += 1
+        else:
+            if current is not None:
+                keep_interval(current)
+            timestamp = format_timestamp(source.timestamp(row))
+
+            current = TimeInterval(
+                start_time=timestamp,
+                end_time=timestamp,
+                start_row=row,
+                end_row=row + 1,
+                row_count=1,
+            )
+    if current is not None:
+        keep_interval(current)
+    return items, total, cadence
+
+
 def get_label_intervals(
     dataset: Dataset,
     settings: Settings,
@@ -282,12 +333,12 @@ def get_label_intervals(
     start_time, end_time = normalize_time_bounds(inspection.timezone_mode, start_time, end_time)
 
     # 구간 표시는 그래프 축약과 별도로 모든 라벨을 읽어 한 관측짜리 이상도 남긴다.
-    source = _load_source(dataset, settings, inspection.channels[:1])
+    source = load_index(dataset, settings)
 
-    start_row, end_row = _row_bounds(source.timestamps, start_time, end_time)
+    start_row, end_row = source.bounds(start_time, end_time)
 
-    intervals, cadence = _intervals(
-        source.timestamps, list(range(start_row, end_row)), source.codes[start_row:end_row], code
+    intervals, total, cadence = _interval_page(
+        source, enumerate(source.codes[start_row:end_row], start=start_row), code, limit, offset
     )
 
     return LabelIntervals(
@@ -297,8 +348,8 @@ def get_label_intervals(
         abnormal_label=dataset.abnormal_label,
         timezone_mode=inspection.timezone_mode,
         cadence_seconds=cadence,
-        items=intervals[offset : offset + limit],
-        total=len(intervals),
+        items=intervals,
+        total=total,
         limit=limit,
         offset=offset,
     )
@@ -315,13 +366,15 @@ def validate_observation_interval(
 
     start_time, end_time = normalize_time_bounds(inspection.timezone_mode, start_time, end_time)
 
-    source = _load_source(dataset, settings, [channel])
+    validate_channels(dataset, [channel])
 
-    if start_time < source.timestamps[0] or end_time > source.timestamps[-1]:
+    source = load_index(dataset, settings)
+
+    if time_number(start_time) < source.times[0] or time_number(end_time) > source.times[-1]:
         raise _series_error(
             422, "OBSERVATION_OUTSIDE_DATA", "관찰 구간을 CSV 관측 기간 안에 지정하세요."
         )
-    start_row, end_row = _row_bounds(source.timestamps, start_time, end_time)
+    start_row, end_row = source.bounds(start_time, end_time)
 
     if start_row == end_row:
         raise _series_error(
@@ -338,7 +391,7 @@ def _prediction_source(
     model_key: ModelKey | None,
     start_time: datetime | None,
     end_time: datetime | None,
-) -> tuple[PredictionContext, SourceSeries, object, int, int]:
+) -> tuple[PredictionContext, SourceIndex, object, list[str], int, int]:
     if model_run.status != "completed":
         raise _series_error(409, "RUN_NOT_COMPLETED", "모델 학습이 완료된 뒤 예측을 조회하세요.")
     selected_key = model_key or model_run.selected_model
@@ -372,24 +425,26 @@ def _prediction_source(
 
         start_time, end_time = normalize_time_bounds(inspection.timezone_mode, start_time, end_time)
 
-        source = _load_source(dataset, settings, configuration.feature_columns)
+        validate_channels(dataset, configuration.feature_columns)
+
+        source = load_index(dataset, settings)
 
         partition = getattr(SplitInfo.model_validate(training_report["split"]), split_name)
 
         # 저장된 분할이 사용자 경계와 일치하는지 확인하고 그 분할 밖의 행은 보내지 않는다.
-        train_end = bisect_right(source.timestamps, configuration.train_end)
+        train_end = source.bounds(None, configuration.train_end)[1]
 
-        validation_end = bisect_right(source.timestamps, configuration.validation_end)
+        validation_end = source.bounds(None, configuration.validation_end)[1]
 
         expected_bounds = (
             (train_end, validation_end)
             if split_name == "validation"
-            else (validation_end, len(source.timestamps))
+            else (validation_end, len(source.times))
         )
 
         if (partition.start_row, partition.end_row) != expected_bounds:
             raise ValueError("저장된 분할 정보 불일치")
-        query_start, query_end = _row_bounds(source.timestamps, start_time, end_time)
+        query_start, query_end = source.bounds(start_time, end_time)
 
         start_row = max(partition.start_row, query_start)
 
@@ -423,7 +478,7 @@ def _prediction_source(
             artifact_sha256=model_report["artifact_sha256"],
         )
 
-        return context, source, estimator, start_row, end_row
+        return context, source, estimator, configuration.feature_columns, start_row, end_row
     except (OSError, ValueError, KeyError, TypeError, ValidationError):
         raise _series_error(
             503, "PREDICTION_UNAVAILABLE", "저장된 모델과 CSV를 확인하지 못했습니다."
@@ -459,7 +514,7 @@ def get_predictions(
     limit: int,
     offset: int,
 ) -> PredictionResponse:
-    context, source, estimator, start_row, end_row = _prediction_source(
+    context, source, estimator, channels, start_row, end_row = _prediction_source(
         model_run, dataset, settings, split_name, model_key, start_time, end_time
     )
 
@@ -467,27 +522,33 @@ def get_predictions(
 
     page_end = min(page_start + limit, end_row)
 
-    predicted_codes, scores = _predict(estimator, source.values[page_start:page_end])
+    items = []
 
-    return PredictionResponse(
-        **context.model_dump(),
-        total=end_row - start_row,
-        limit=limit,
-        offset=offset,
-        items=[
+    # 페이지 수가 커도 모델에는 최대 1,000행만 전달한다.
+    for batch in value_batches(dataset, settings, source, channels, page_start, page_end):
+        predicted_codes, scores = _predict(estimator, batch.values)
+
+        items.extend(
             PredictionPoint(
-                row_index=row_index,
-                timestamp=format_timestamp(source.timestamps[row_index]),
-                actual_label=source.raw_labels[row_index],
-                actual_code=int(source.codes[row_index]),
+                row_index=batch.start_row + page_index,
+                timestamp=format_timestamp(source.timestamp(batch.start_row + page_index)),
+                actual_label=batch.raw_labels[page_index],
+                actual_code=int(source.codes[batch.start_row + page_index]),
                 predicted_label=dataset.abnormal_label
                 if predicted_codes[page_index]
                 else dataset.normal_label,
                 predicted_code=int(predicted_codes[page_index]),
                 score=float(scores[page_index]),
             )
-            for page_index, row_index in enumerate(range(page_start, page_end))
-        ],
+            for page_index in range(len(batch.values))
+        )
+
+    return PredictionResponse(
+        **context.model_dump(),
+        total=end_row - start_row,
+        limit=limit,
+        offset=offset,
+        items=items,
     )
 
 
@@ -503,22 +564,26 @@ def get_prediction_intervals(
     limit: int,
     offset: int,
 ) -> PredictionIntervals:
-    context, source, estimator, start_row, end_row = _prediction_source(
+    context, source, estimator, channels, start_row, end_row = _prediction_source(
         model_run, dataset, settings, split_name, model_key, start_time, end_time
     )
 
-    predicted_codes, _ = _predict(estimator, source.values[start_row:end_row])
+    def predicted_rows() -> Iterator[tuple[int, int]]:
+        for batch in value_batches(dataset, settings, source, channels, start_row, end_row):
+            codes, _ = _predict(estimator, batch.values)
 
-    intervals, cadence = _intervals(
-        source.timestamps, list(range(start_row, end_row)), predicted_codes, predicted_code
+            yield from enumerate(codes, start=batch.start_row)
+
+    intervals, total, cadence = _interval_page(
+        source, predicted_rows(), predicted_code, limit, offset
     )
 
     return PredictionIntervals(
         **context.model_dump(),
         predicted_code=predicted_code,
         cadence_seconds=cadence,
-        items=intervals[offset : offset + limit],
-        total=len(intervals),
+        items=intervals,
+        total=total,
         limit=limit,
         offset=offset,
     )
