@@ -381,6 +381,7 @@ export default function ModelsPage() {
     setSelectedDatasetId,
     setSelectedRunId,
     refreshRuns,
+    refreshDatasets,
     toast,
   } = useApp();
 
@@ -391,6 +392,8 @@ export default function ModelsPage() {
   const [dataset, setDataset] = useState<DatasetDetail | null>(null);
 
   const [datasetLoading, setDatasetLoading] = useState(false);
+
+  const [reinspecting, setReinspecting] = useState(false);
 
   const [modelKey, setModelKey] = useState<TrainingModel>('xgboost');
 
@@ -438,6 +441,8 @@ export default function ModelsPage() {
 
   const planController = useRef<AbortController | null>(null);
 
+  const reinspectionController = useRef<AbortController | null>(null);
+
   const manualBoundaries = useRef(false);
 
   const loadedDatasetAccount = useRef('');
@@ -448,6 +453,10 @@ export default function ModelsPage() {
 
   currentRun.current = selectedRunId;
   activeAccount.current = `${mode}:${user?.id}`;
+
+  const metadataNeedsReinspection = !!dataset?.inspection.channels.some((column) =>
+    ['machine_status', 'all_sensors_missing'].includes(column),
+  );
 
   function clearPlan() {
     planController.current?.abort();
@@ -464,6 +473,9 @@ export default function ModelsPage() {
     // CSV·계정이 바뀌면 이전 채널과 자동 설정을 다음 자료에 적용하지 않는다.
     const controller = new AbortController();
 
+    reinspectionController.current?.abort();
+    reinspectionController.current = null;
+    setReinspecting(false);
     setDataset(null);
     loadedDatasetAccount.current = '';
     manualBoundaries.current = false;
@@ -494,8 +506,37 @@ export default function ModelsPage() {
     return () => {
       controller.abort();
       planController.current?.abort();
+      reinspectionController.current?.abort();
     };
   }, [datasetId, mode, user?.id]);
+
+  async function reinspectCsv() {
+    if (!dataset || reinspecting || creating || mode !== 'live') return;
+    const controller = new AbortController();
+
+    const requestAccount = activeAccount.current;
+
+    reinspectionController.current?.abort();
+    reinspectionController.current = controller;
+    setReinspecting(true);
+    clearPlan();
+    try {
+      const inspected = await api.reinspectDataset(dataset.dataset.id, controller.signal);
+
+      if (controller.signal.aborted || activeAccount.current !== requestAccount) return;
+      manualBoundaries.current = false;
+      setDataset(inspected);
+      setFeatures([...inspected.inspection.channels]);
+      setTrainEnd('');
+      setValidationEnd('');
+      await refreshDatasets();
+    } catch (error) {
+      if (!controller.signal.aborted && activeAccount.current === requestAccount)
+        setFormError(errorMessage(error));
+    } finally {
+      if (reinspectionController.current === controller) setReinspecting(false);
+    }
+  }
 
   useEffect(() => {
     if (!selectedRunId && runs.length) setSelectedRunId(runs[0].id);
@@ -572,6 +613,8 @@ export default function ModelsPage() {
   async function automaticSettings(resetOptions = true) {
     if (
       !dataset ||
+      metadataNeedsReinspection ||
+      reinspecting ||
       mode === 'demo' ||
       loadedDatasetAccount.current !== activeAccount.current ||
       (!resetOptions && manualBoundaries.current)
@@ -626,6 +669,8 @@ export default function ModelsPage() {
       datasetLoading ||
       dataset.dataset.id !== datasetId ||
       dataset.dataset.status !== 'valid' ||
+      metadataNeedsReinspection ||
+      reinspecting ||
       !features.length ||
       mode === 'demo' ||
       loadedDatasetAccount.current !== activeAccount.current ||
@@ -650,13 +695,21 @@ export default function ModelsPage() {
     trainRatio,
     validationRatio,
     features,
+    reinspecting,
+    metadataNeedsReinspection,
   ]);
 
   async function startTraining(event: FormEvent) {
     event.preventDefault();
     if (mode === 'demo' || creating || planning) return;
     setFormError('');
-    if (!dataset || dataset.dataset.status !== 'valid' || !features.length) {
+    if (
+      !dataset ||
+      dataset.dataset.status !== 'valid' ||
+      metadataNeedsReinspection ||
+      reinspecting ||
+      !features.length
+    ) {
       setFormError('검사를 통과한 CSV와 학습할 채널을 선택해주세요.');
       return;
     }
@@ -853,10 +906,46 @@ export default function ModelsPage() {
               {features.length}개 채널
             </p>
           )}
-          {dataset?.dataset.status === 'needs_review' && (
+          {dataset && (dataset.dataset.status === 'needs_review' || metadataNeedsReinspection) && (
             <Notice tone="warning">
-              이 CSV는 입력 확인이 필요해요. 원본을 수정하지 않고 학습을 멈춥니다.
+              <p>아래 항목 때문에 학습을 멈췄어요. 원본 CSV는 바꾸지 않습니다.</p>
+              {metadataNeedsReinspection && (
+                <p>
+                  <code>machine_status</code> 같은 상태 열이 숫자 채널로 잡힌 이전 검사 결과예요.
+                  다시 검사하면 상태 열을 학습 입력에서 제외합니다.
+                </p>
+              )}
+              <ul aria-label="CSV에서 확인할 항목">
+                {dataset.inspection.issues
+                  .filter((issue) => issue.severity === 'error')
+                  .map((issue, index) => (
+                    <li key={`${issue.code}:${issue.column || ''}:${index}`}>
+                      {issue.column ? `${issue.column} · ` : ''}
+                      {number(issue.count)}건: {issue.message}
+                    </li>
+                  ))}
+              </ul>
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => void reinspectCsv()}
+                disabled={reinspecting || creating || mode !== 'live'}
+              >
+                {reinspecting ? (
+                  <LoaderCircle size={15} className="spin" />
+                ) : (
+                  <RefreshCw size={15} />
+                )}
+                {reinspecting ? 'CSV 다시 검사 중' : 'CSV 다시 검사'}
+              </button>{' '}
+              <Link to="/data">전체 검사 결과 보기 ↗</Link>
             </Notice>
+          )}
+          {!!dataset?.inspection.ignored_columns?.length && (
+            <p className="training-period">
+              학습 입력에서 제외한 상태 열: {dataset.inspection.ignored_columns.join(', ')}.
+              원본에는 그대로 남아 있어요.
+            </p>
           )}
         </section>
         <section className="training-step">
@@ -948,6 +1037,8 @@ export default function ModelsPage() {
               disabled={
                 !dataset ||
                 dataset.dataset.status !== 'valid' ||
+                metadataNeedsReinspection ||
+                reinspecting ||
                 !features.length ||
                 planning ||
                 creating ||
@@ -1183,6 +1274,8 @@ export default function ModelsPage() {
                 planning ||
                 !dataset ||
                 dataset.dataset.status !== 'valid' ||
+                metadataNeedsReinspection ||
+                reinspecting ||
                 mode === 'demo' ||
                 !features.length ||
                 !trainEnd ||

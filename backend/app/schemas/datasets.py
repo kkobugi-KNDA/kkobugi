@@ -30,6 +30,9 @@ class CsvInspection(BaseModel):
 
     channels: list[str]
 
+    # 조업 상태·결측 표시 같은 부가 열은 보존하되 모델 입력에서 제외한다.
+    ignored_columns: list[str] = Field(default_factory=list)
+
     timestamp_column: str
 
     label_column: str

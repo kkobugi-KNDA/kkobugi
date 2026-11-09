@@ -20,6 +20,7 @@ Figma의 데이터 선택·CSV 검사 화면부터 연결한다. 실행 중인 �
 | `POST /datasets` | 아래 multipart 항목 | `201`, 동일 파일·설정은 기존 자료로 `200` |
 | `GET /datasets` | `limit=20`, `offset=0` | `items`, `total`, `limit`, `offset` |
 | `GET /datasets/{dataset_id}` | 쿠키 | `dataset`, `inspection` |
+| `POST /datasets/{dataset_id}/reinspect` | 쿠키·변경 요청 헤더 | 원본을 다시 검사한 `dataset`, `inspection` |
 | `GET /datasets/{dataset_id}/file` | 쿠키 | 업로드한 원본 CSV |
 
 CSV는 로그인한 계정별로 저장·조회한다. 다른 계정의 자료와 없는 자료는 모두 `404`다.
@@ -37,7 +38,9 @@ CSV는 로그인한 계정별로 저장·조회한다. 다른 계정의 자료�
 | `normal_label` | `normal` | 정상 라벨 값 |
 | `abnormal_label` | `abnormal` | 비정상 라벨 값 |
 
-나머지 열은 숫자 채널이다. 라벨이 `0/1`이면 두 라벨 값을 직접 지정한다.
+`machine_status`, `all_sensors_missing`는 상태 정보로 보존하고 숫자 채널에서 제외한다.
+제외한 이름은 `inspection.ignored_columns`에 담는다. 나머지 열은 숫자 채널이다.
+라벨이 `0/1`이면 두 라벨 값을 직접 지정한다.
 설정 항목을 생략하면 기본값을 쓴다. 명시적으로 빈 문자열을 보내면 `422`로 거부한다.
 역할 열·라벨 값은 서로 달라야 하며, 라벨 설정의 앞뒤 공백은 허용하지 않는다.
 업로드 셀 값은 앞뒤 공백을 제외해 검사하되 원본 바이트는 변경하지 않는다.
@@ -75,6 +78,10 @@ const result = await response.json();
 CSV가 아닌 파일명은 `415`, 크기·행 수 초과는 `413`이다. 기본 제한은 파일 200 MiB·100만 행·256열이며
 환경설정으로 바꿀 수 있다. 요청 전체는 multipart 항목을 포함해 파일 제한보다 1 MiB 큰 크기까지 받는다.
 같은 계정·파일 SHA256·네 가지 설정이 같으면 기존 ID를 돌려준다. 수정한 CSV는 새 자료로 등록한다.
+
+이전 검사에서 상태 열이 숫자로 잡혔다면 `POST /datasets/{id}/reinspect`로 갱신한다.
+등록 ID·시각·원본 바이트·SHA256은 유지하고 검사 결과만 바꾼다. 검사 전후 해시가 다르면 갱신하지 않는다.
+단순 조회로는 기존 검사 결과를 바꾸지 않는다.
 
 ## 모델 학습·비교·선택
 
@@ -306,3 +313,29 @@ Pro+는 같은 결과를 상세 지표와 옵션으로 표시한다. 설명 방�
 
 구간은 픽셀이나 배열 번호로 저장하지 않는다. 모델 결과는 실행 ID로 연결하고,
 사람 판단·모델 라벨·검토 완료 상태는 합치지 않는다.
+
+## 포석호 대화
+
+`POST /api/v1/assistant/chat`은 질문과 앞선 대화를 받아 답한다. 비용과 모델 선택은 필수가 아니다.
+
+```json
+{
+  "question": "지금 시뮬레이션 상태를 설명해줘.",
+  "history": [{"role":"user","content":"펌프를 확인하고 있어."}],
+  "expertise": "pro",
+  "simulation_context": {
+    "status": "playing", "cursor": 120, "total_rows": 43200,
+    "signal_count": 2, "timestamp": "2026-11-01T01:59:00"
+  }
+}
+```
+
+- `history`는 최근 20개까지, 역할은 `user/assistant`만 받는다.
+- `run_id`, `model_key`는 둘 다 생략하거나 본인의 같은 실행으로 함께 지정한다.
+- `observation`, `cost_inputs`, `simulation_context`는 선택이다. 빈 비용은 0원으로 만들지 않는다.
+- 응답은 `answer`, `citations`, `limitations`, `source_mode`, 선택한 모델·입력 비용을 담는다.
+- 외부 AI가 응답하면 `source_mode=llm`, 사용할 수 없으면 `retrieval`로 구분한다.
+- 모델 근거가 있으면 `report_message_id`를 반환해 기존 보고서 API에 연결한다. 일반 대화만으로 모델 보고서를 만들지 않는다.
+
+대화 기록은 계정별로 저장한다. 전송된 시뮬레이션 상태는 브라우저에서 읽은 재생 상태이며 설비 실측값을 인증하는 정보는 아니다.
+10분 안내는 시뮬레이션 화면에 있는 동안 최신 재생 상태를 요약한다. 이 타이머는 외부 AI를 호출하지 않는다.

@@ -5,12 +5,12 @@ import { ExpertiseProvider } from '../context/ExpertiseContext';
 import { DEMO_DATASET_DETAIL, DEMO_RUN_DETAIL } from '../data/demo';
 import type { SimulationBatch, SimulationManifest } from '../lib/simulation-api';
 import SimulationPage from './SimulationPage';
+import { ASSISTANT_OPEN_EVENT } from '../lib/assistant-events';
 
 const mocks = vi.hoisted(() => ({
   useApp: vi.fn(),
   axRequest: vi.fn(),
   uploadSimulation: vi.fn(),
-  assistantProps: vi.fn(),
 }));
 
 vi.mock('../context/AppContext', () => ({ useApp: mocks.useApp }));
@@ -31,12 +31,6 @@ vi.mock('../components/PumpSimulationScene', () => ({
       <button onClick={() => onSelectPart('part-1')}>첫 부품 선택</button>
     </div>
   ),
-}));
-vi.mock('../components/AxAssistantPanel', () => ({
-  default: (props: unknown) => {
-    mocks.assistantProps(props);
-    return <div data-testid="simulation-assistant">점검 안내</div>;
-  },
 }));
 
 const manifest: SimulationManifest = {
@@ -395,9 +389,13 @@ describe('업로드한 한 달 CSV로 실행하는 시뮬레이션', () => {
     expect(within(panel).getByLabelText('입력 기준 잔여시간')).toHaveTextContent(
       '입력 기준 잔여 0시간',
     );
+    const requestedChat = vi.fn();
+
+    window.addEventListener(ASSISTANT_OPEN_EVENT, requestedChat);
     fireEvent.click(within(panel).getByRole('button', { name: '점검 안내·보고서' }));
     await act(async () => {});
-    const assistant = mocks.assistantProps.mock.calls.at(-1)?.[0];
+    window.removeEventListener(ASSISTANT_OPEN_EVENT, requestedChat);
+    const assistant = (requestedChat.mock.calls.at(-1)?.[0] as CustomEvent).detail;
 
     expect(assistant).toMatchObject({
       runId: manifest.run_id,

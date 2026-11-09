@@ -11,6 +11,7 @@ from app.models import Dataset
 from app.schemas.runs import AutoencoderOptions, NewRunCreate, XGBoostOptions
 from app.schemas.training import TrainingPlanRequest, TrainingPlanResponse
 from app.services import datasets as dataset_service
+from app.services.csv_inspection import METADATA_COLUMNS
 from app.services.modeling import _file_sha256
 
 
@@ -37,6 +38,7 @@ def make_training_plan(
         not features
         or len(set(features)) != len(features)
         or not set(features).issubset(inspection.channels)
+        or set(features) & METADATA_COLUMNS
         or len(features) > settings.max_training_features
     ):
         raise HTTPException(

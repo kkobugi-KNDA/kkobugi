@@ -109,6 +109,23 @@ def get_dataset(
     return dataset_service.dataset_detail(dataset)
 
 
+@router.post(
+    "/{dataset_id}/reinspect",
+    response_model=DatasetDetail,
+    summary="같은 CSV의 검사 결과 새로 확인",
+    dependencies=[Depends(memory_guard)],
+)
+def reinspect_dataset(
+    dataset_id: str,
+    request: Request,
+    database_session: DatabaseSession,
+    current_user: CurrentUser,
+) -> DatasetDetail:
+    return dataset_service.reinspect_dataset(
+        database_session, dataset_id, current_user.id, request.app.state.settings
+    )
+
+
 @router.get(
     "/{dataset_id}/file",
     summary="등록한 원본 CSV 다운로드",

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   Navigate,
   NavLink,
@@ -39,7 +39,11 @@ import { AppProvider, useApp, type ToastMessage } from './context/AppContext';
 import LoginPage, { Brand } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AssistantPet from './components/AssistantPet';
-import AxAssistantPanel from './components/AxAssistantPanel';
+import ChatConversation from './components/ChatConversation';
+import PetChatModal from './components/PetChatModal';
+import { ASSISTANT_OPEN_EVENT, type AssistantOpenDetail } from './lib/assistant-events';
+import { useSimulationAssistant } from './lib/use-simulation-assistant';
+import type { SimulationChatContext } from './lib/chat-api';
 import ExpertiseToggle from './components/ExpertiseToggle';
 import { ExpertiseProvider, useExpertise } from './context/ExpertiseContext';
 import { Badge, Drawer } from './components/ui';
@@ -91,30 +95,67 @@ function Toast({ message }: { message: ToastMessage }) {
 function Assistant({
   open,
   onOpenChange,
+  detail,
+  getSimulationContext,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  detail: AssistantOpenDetail;
+  getSimulationContext: () => SimulationChatContext | null;
 }) {
   const { runs, selectedRunId } = useApp();
 
   const selectedRun = runs.find((run) => run.id === selectedRunId && run.status === 'completed');
 
   return (
-    <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
-      title="점검 도우미"
-      description="학습 결과와 문헌 근거를 함께 확인해요."
-      className="assistant-drawer"
-    >
-      <AxAssistantPanel
-        runId={selectedRun?.id || null}
-        modelKey={selectedRun?.selected_model || null}
-        split={selectedRun?.evaluation_status === 'completed' ? 'test' : 'validation'}
+    <PetChatModal open={open} onOpenChange={onOpenChange}>
+      <ChatConversation
+        runId={
+          detail.runId === undefined
+            ? selectedRun?.selected_model
+              ? selectedRun.id
+              : null
+            : detail.runId
+        }
+        modelKey={
+          detail.modelKey === undefined ? selectedRun?.selected_model || null : detail.modelKey
+        }
+        split={
+          detail.split || (selectedRun?.evaluation_status === 'completed' ? 'test' : 'validation')
+        }
+        selectedSignal={detail.selectedSignal}
+        suggestedCostInputs={detail.suggestedCostInputs}
+        contextKey={detail.contextKey}
+        simulationContext={detail.simulationContext}
+        getSimulationContext={getSimulationContext}
       />
-    </Drawer>
+    </PetChatModal>
   );
 }
+/** 같은 시뮬레이션을 다시 열면 부품별 대화와 견적 입력을 유지한다. */
+export function assistantDetailForPet(
+  previous: AssistantOpenDetail,
+  current: AssistantOpenDetail | null,
+): AssistantOpenDetail {
+  if (!current) return {};
+
+  const simulationId = current.contextKey?.startsWith('simulation:')
+    ? current.contextKey.slice('simulation:'.length)
+    : null;
+
+  const sameSimulation =
+    Boolean(simulationId) &&
+    (previous.contextKey === current.contextKey ||
+      (simulationId !== 'waiting' && previous.contextKey?.startsWith(`${simulationId}:`)));
+
+  const sameModel =
+    previous.runId === current.runId &&
+    previous.modelKey === current.modelKey &&
+    (previous.split || 'validation') === (current.split || 'validation');
+
+  return sameSimulation && sameModel ? previous : current;
+}
+
 function Shell() {
   const { isExpert } = useExpertise();
 
@@ -128,6 +169,40 @@ function Shell() {
     [assistantOpen, setAssistantOpen] = useState(false),
     [helpOpen, setHelpOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [assistantDetail, setAssistantDetail] = useState<AssistantOpenDetail>({});
+
+  const { latestStatus, notice, dismissNotice } = useSimulationAssistant(
+    location.pathname === '/simulation',
+    user?.id,
+  );
+
+  const getSimulationContext = useCallback(
+    () => latestStatus.current?.simulationContext || null,
+    [latestStatus],
+  );
+
+  useEffect(() => {
+    const receive = (event: Event) => {
+      setAssistantDetail((event as CustomEvent<AssistantOpenDetail>).detail || {});
+      setAssistantOpen(true);
+    };
+
+    window.addEventListener(ASSISTANT_OPEN_EVENT, receive);
+    return () => window.removeEventListener(ASSISTANT_OPEN_EVENT, receive);
+  }, []);
+
+  useEffect(() => {
+    setAssistantOpen(false);
+    setAssistantDetail({});
+  }, [user?.id, mode]);
+
+  function openFromPet() {
+    const currentStatus = latestStatus.current;
+
+    setAssistantDetail((previous) => assistantDetailForPet(previous, currentStatus));
+    dismissNotice();
+    setAssistantOpen(true);
+  }
   const current = NAV.find((n) => n.to === location.pathname) || NAV[0];
   const running = runs.filter((r) => r.status === 'running' || r.status === 'queued');
   const compact = collapsed && !mobileOpen;
@@ -356,8 +431,18 @@ function Shell() {
             </footer>
           </main>
         </div>
-        <AssistantPet onOpen={() => setAssistantOpen(true)} working={running.length > 0} />
-        <Assistant open={assistantOpen} onOpenChange={setAssistantOpen} />
+        <AssistantPet
+          onOpen={openFromPet}
+          working={running.length > 0}
+          notice={assistantOpen ? '' : notice}
+          onDismissNotice={dismissNotice}
+        />
+        <Assistant
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          detail={assistantDetail}
+          getSimulationContext={getSimulationContext}
+        />
         <Drawer
           open={helpOpen}
           onOpenChange={setHelpOpen}

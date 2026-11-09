@@ -92,6 +92,61 @@ def test_numeric_labels_are_not_silently_treated_as_normal_abnormal(write_csv):
     assert inspection.label_counts == {"normal": 0, "abnormal": 0}
 
 
+def test_known_metadata_stays_in_original_but_is_not_a_numeric_channel(write_csv):
+    csv_path = write_csv(
+        [
+            ["timestamp", "sensor_00", "machine_status", "all_sensors_missing", "label"],
+            ["2026-11-09T01:00:00", "10", "NORMAL", "False", "normal"],
+            ["2026-11-09T01:01:00", "11", "RECOVERING", "", "abnormal"],
+        ]
+    )
+
+    original = csv_path.read_bytes()
+
+    inspection = inspect_csv(csv_path)
+
+    assert inspection.is_valid
+    assert inspection.channels == ["sensor_00"]
+    assert inspection.ignored_columns == ["machine_status", "all_sensors_missing"]
+    assert inspection.invalid_numeric_counts == {"sensor_00": 0}
+    assert inspection.invalid_timestamp_count == 0
+    assert inspection.preview[0]["machine_status"] == "NORMAL"
+    assert inspection.missing_counts["all_sensors_missing"] == 1
+    assert all(issue.severity == "warning" for issue in inspection.issues)
+    assert csv_path.read_bytes() == original
+
+
+def test_unknown_text_column_is_still_an_error(write_csv):
+    csv_path = write_csv(
+        [
+            ["timestamp", "sensor_00", "operator_note", "label"],
+            ["2026-11-09T01:00:00", "10", "not a number", "normal"],
+        ]
+    )
+
+    inspection = inspect_csv(csv_path)
+
+    assert not inspection.is_valid
+    assert inspection.channels == ["sensor_00", "operator_note"]
+    assert inspection.invalid_numeric_counts["operator_note"] == 1
+    assert inspection.ignored_columns == []
+
+
+def test_machine_status_can_be_explicit_label_and_is_checked_as_label(write_csv):
+    csv_path = write_csv(
+        [["timestamp", "sensor_00", "machine_status"], ["2026-11-09T01:00:00", "10", "BROKEN"]]
+    )
+
+    inspection = inspect_csv(
+        csv_path, label_column="machine_status", normal_label="NORMAL", abnormal_label="BROKEN"
+    )
+
+    assert inspection.is_valid
+    assert inspection.channels == ["sensor_00"]
+    assert inspection.ignored_columns == []
+    assert inspection.label_counts == {"NORMAL": 0, "BROKEN": 1}
+
+
 def test_missing_and_invalid_values_are_distinct_and_rows_are_kept(write_csv):
     csv_path = write_csv(
         [

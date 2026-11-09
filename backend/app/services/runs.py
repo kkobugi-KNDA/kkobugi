@@ -34,6 +34,7 @@ from app.schemas.runs import (
 )
 from app.services import datasets as dataset_service
 from app.services import modeling
+from app.services.csv_inspection import METADATA_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +303,10 @@ class RunManager:
                     raise _run_error(
                         422, "INVALID_FEATURES", "학습 가능한 최대 채널 수를 초과했습니다."
                     )
-                if not set(request.feature_columns).issubset(inspection.channels):
+                if (
+                    not set(request.feature_columns).issubset(inspection.channels)
+                    or set(request.feature_columns) & METADATA_COLUMNS
+                ):
                     raise _run_error(
                         422, "INVALID_FEATURES", "CSV의 숫자 채널에서 학습할 특징을 선택하세요."
                     )
