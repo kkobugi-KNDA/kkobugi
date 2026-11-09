@@ -117,7 +117,7 @@ def run_request(dataset_id, **overrides):
     request = {
         "dataset_id": dataset_id,
         "feature_columns": ["sensor_00", "sensor_01"],
-        "models": ["dummy", "xgboost", "autoencoder"],
+        "models": ["lightgbm", "xgboost", "autoencoder"],
         "train_end": "2026-01-01T00:29:00",
         "validation_end": "2026-01-01T00:44:00",
         "ranking_metric": "f1",
@@ -197,7 +197,9 @@ def test_every_model_and_run_endpoint_requires_login(run_client):
         run_client.get(f"/api/v1/runs/{run_id}"),
         run_client.get(f"/api/v1/runs/{run_id}/results"),
         run_client.post(
-            f"/api/v1/runs/{run_id}/selection", json={"model_key": "dummy"}, headers=WRITE_HEADERS
+            f"/api/v1/runs/{run_id}/selection",
+            json={"model_key": "lightgbm"},
+            headers=WRITE_HEADERS,
         ),
         run_client.post(f"/api/v1/runs/{run_id}/evaluation", headers=WRITE_HEADERS),
         run_client.get(f"/api/v1/runs/{run_id}/evaluation"),
@@ -213,8 +215,8 @@ def test_catalog_lists_available_models_without_starting_training(run_client):
     assert response.status_code == 200
     definitions = {model["key"]: model for model in response.json()["items"]}
 
-    assert set(definitions) == {"dummy", "xgboost", "autoencoder"}
-    assert definitions["dummy"]["kind"] == "baseline"
+    assert set(definitions) == {"lightgbm", "xgboost", "autoencoder"}
+    assert definitions["lightgbm"]["kind"] == "classifier"
     assert all(model["display_name"] and model["parameters"] for model in definitions.values())
     assert run_client.get("/api/v1/runs").json()["total"] == 0
 
@@ -250,7 +252,7 @@ def test_comparison_uses_explicit_time_splits_and_never_auto_selects(run_client,
     assert results["metric"] == "f1"
     assert results["selected_model"] is None
     assert {item["model_key"] for item in results["items"]} == {
-        "dummy",
+        "lightgbm",
         "xgboost",
         "autoencoder",
     }
@@ -276,12 +278,12 @@ def test_comparison_uses_explicit_time_splits_and_never_auto_selects(run_client,
 def test_only_requested_models_and_features_are_trained(run_client):
     dataset_id = upload_dataset(run_client)
 
-    run_id = create_run(run_client, dataset_id, models=["dummy"], feature_columns=["sensor_00"])
+    run_id = create_run(run_client, dataset_id, models=["lightgbm"], feature_columns=["sensor_00"])
 
     assert wait_for_training(run_client, run_id)["run"]["status"] == "completed"
     results = run_client.get(f"/api/v1/runs/{run_id}/results").json()
 
-    assert [result["model_key"] for result in results["items"]] == ["dummy"]
+    assert [result["model_key"] for result in results["items"]] == ["lightgbm"]
     selection_response = run_client.post(
         f"/api/v1/runs/{run_id}/selection",
         json={"model_key": "autoencoder"},
@@ -294,7 +296,7 @@ def test_only_requested_models_and_features_are_trained(run_client):
 def test_model_choice_and_test_evaluation_are_separate_actions(run_client, run_settings):
     dataset_id = upload_dataset(run_client)
 
-    run_id = create_run(run_client, dataset_id, models=["dummy", "xgboost"])
+    run_id = create_run(run_client, dataset_id, models=["lightgbm", "xgboost"])
 
     assert wait_for_training(run_client, run_id)["run"]["status"] == "completed"
     assert_api_error(
@@ -327,7 +329,9 @@ def test_model_choice_and_test_evaluation_are_separate_actions(run_client, run_s
     assert repeated_response.json() == evaluation
     assert_api_error(
         run_client.post(
-            f"/api/v1/runs/{run_id}/selection", json={"model_key": "dummy"}, headers=WRITE_HEADERS
+            f"/api/v1/runs/{run_id}/selection",
+            json={"model_key": "lightgbm"},
+            headers=WRITE_HEADERS,
         ),
         409,
     )
@@ -351,7 +355,7 @@ def test_model_choice_and_test_evaluation_are_separate_actions(run_client, run_s
         {"feature_columns": ["sensor_00", "sensor_00"]},
         {"feature_columns": []},
         {"models": []},
-        {"models": ["dummy", "dummy"]},
+        {"models": ["lightgbm", "lightgbm"]},
         {"models": ["unknown_model"]},
         {"train_end": "2026-01-01T00:44:00", "validation_end": "2026-01-01T00:29:00"},
         {"validation_end": "2026-01-01T00:29:00"},
@@ -397,10 +401,11 @@ def test_dataset_with_quality_errors_cannot_start_training(run_client):
     assert run_client.get("/api/v1/runs").json()["total"] == 0
 
 
-def test_one_class_train_fails_without_publishing_comparison_or_test_metrics(run_client):
+@pytest.mark.parametrize("model_key", ["xgboost", "lightgbm"])
+def test_one_class_train_fails_without_publishing_comparison_or_test_metrics(run_client, model_key):
     dataset_id = upload_dataset(run_client, prepared_csv(train_one_class=True))
 
-    run_id = create_run(run_client, dataset_id, models=["xgboost"])
+    run_id = create_run(run_client, dataset_id, models=[model_key])
 
     detail = wait_for_training(run_client, run_id)
 
@@ -411,8 +416,8 @@ def test_one_class_train_fails_without_publishing_comparison_or_test_metrics(run
     assert run_client.get(f"/api/v1/runs/{run_id}/evaluation").json()["metrics"] is None
 
 
-@pytest.mark.parametrize("model_key", ["dummy", "autoencoder"])
-def test_normal_only_train_is_allowed_for_baseline_and_normal_learning_model(run_client, model_key):
+@pytest.mark.parametrize("model_key", ["autoencoder"])
+def test_normal_only_train_is_allowed_for_normal_learning_model(run_client, model_key):
     # AE는 정상 학습, XGBoost는 정답 분류이므로 필요한 Train 라벨 조건이 다르다.
     dataset_id = upload_dataset(run_client, prepared_csv(train_one_class=True))
 
@@ -446,7 +451,7 @@ def test_custom_csv_column_names_and_label_mapping_are_used_in_training(run_clie
         },
     )
 
-    run_id = create_run(run_client, dataset_id, models=["dummy"])
+    run_id = create_run(run_client, dataset_id, models=["lightgbm"])
 
     detail = wait_for_training(run_client, run_id)
 
@@ -480,7 +485,7 @@ def test_one_class_validation_has_null_auc_and_no_fabricated_rank(run_client):
 def test_foreign_account_cannot_read_select_or_evaluate_another_run(run_client):
     dataset_id = upload_dataset(run_client)
 
-    run_id = create_run(run_client, dataset_id, models=["dummy"])
+    run_id = create_run(run_client, dataset_id, models=["lightgbm"])
 
     assert wait_for_training(run_client, run_id)["run"]["status"] == "completed"
     login_user(run_client, "bob")
@@ -489,7 +494,9 @@ def test_foreign_account_cannot_read_select_or_evaluate_another_run(run_client):
         run_client.get(f"/api/v1/runs/{run_id}/results"),
         run_client.get(f"/api/v1/runs/{run_id}/evaluation"),
         run_client.post(
-            f"/api/v1/runs/{run_id}/selection", json={"model_key": "dummy"}, headers=WRITE_HEADERS
+            f"/api/v1/runs/{run_id}/selection",
+            json={"model_key": "lightgbm"},
+            headers=WRITE_HEADERS,
         ),
         run_client.post(f"/api/v1/runs/{run_id}/evaluation", headers=WRITE_HEADERS),
     ]
@@ -508,7 +515,7 @@ def test_history_pagination_and_validation_metric_sorting(run_client):
     first_run_id = create_run(run_client, dataset_id)
 
     assert wait_for_training(run_client, first_run_id)["run"]["status"] == "completed"
-    second_run_id = create_run(run_client, dataset_id, models=["dummy"])
+    second_run_id = create_run(run_client, dataset_id, models=["lightgbm"])
 
     assert wait_for_training(run_client, second_run_id)["run"]["status"] == "completed"
     history = run_client.get("/api/v1/runs", params={"limit": 1}).json()
@@ -529,10 +536,12 @@ def test_history_pagination_and_validation_metric_sorting(run_client):
 
     assert sorted_results["metric"] == "precision"
     assert sortable_scores == sorted(sortable_scores, reverse=True)
-    dummy_result = next(item for item in sorted_results["items"] if item["model_key"] == "dummy")
+    lightgbm_result = next(
+        item for item in sorted_results["items"] if item["model_key"] == "lightgbm"
+    )
 
-    assert dummy_result["rank"] is None
-    assert dummy_result["sort_value"] is None
+    assert lightgbm_result["rank"] is None
+    assert lightgbm_result["sort_value"] is None
     assert all(
         item["sort_value"] is None for item in sorted_results["items"][len(sortable_scores) :]
     )
@@ -575,12 +584,12 @@ def test_queue_limit_keeps_http_responsive_and_does_not_publish_partial_metrics(
         dataset_id = upload_dataset(test_client)
 
         try:
-            run_id = create_run(test_client, dataset_id, models=["dummy"])
+            run_id = create_run(test_client, dataset_id, models=["lightgbm"])
 
             assert training_started.wait(timeout=3)
             queue_full_response = test_client.post(
                 "/api/v1/runs",
-                json=run_request(dataset_id, models=["dummy"]),
+                json=run_request(dataset_id, models=["lightgbm"]),
                 headers=WRITE_HEADERS,
             )
 
@@ -597,7 +606,7 @@ def test_queue_limit_keeps_http_responsive_and_does_not_publish_partial_metrics(
             assert_api_error(
                 test_client.post(
                     f"/api/v1/runs/{run_id}/selection",
-                    json={"model_key": "dummy"},
+                    json={"model_key": "lightgbm"},
                     headers=WRITE_HEADERS,
                 ),
                 409,
@@ -614,12 +623,14 @@ def test_pending_test_evaluation_locks_selection_and_is_not_queued_twice(run_cli
 
     dataset_id = upload_dataset(run_client)
 
-    run_id = create_run(run_client, dataset_id, models=["dummy", "xgboost"])
+    run_id = create_run(run_client, dataset_id, models=["lightgbm", "xgboost"])
 
     assert wait_for_training(run_client, run_id)["run"]["status"] == "completed"
     assert (
         run_client.post(
-            f"/api/v1/runs/{run_id}/selection", json={"model_key": "dummy"}, headers=WRITE_HEADERS
+            f"/api/v1/runs/{run_id}/selection",
+            json={"model_key": "lightgbm"},
+            headers=WRITE_HEADERS,
         ).status_code
         == 200
     )
@@ -679,13 +690,15 @@ def test_completed_run_selected_model_and_evaluation_survive_server_restart(
 
         dataset_id = upload_dataset(first_client, csv_bytes)
 
-        run_id = create_run(first_client, dataset_id, models=["dummy"])
+        run_id = create_run(first_client, dataset_id, models=["lightgbm"])
 
         first_detail = wait_for_training(first_client, run_id)
 
         assert first_detail["run"]["status"] == "completed"
         selection_response = first_client.post(
-            f"/api/v1/runs/{run_id}/selection", json={"model_key": "dummy"}, headers=WRITE_HEADERS
+            f"/api/v1/runs/{run_id}/selection",
+            json={"model_key": "lightgbm"},
+            headers=WRITE_HEADERS,
         )
 
         assert selection_response.status_code == 200
@@ -707,7 +720,7 @@ def test_completed_run_selected_model_and_evaluation_survive_server_restart(
         restarted_detail = restarted_client.get(f"/api/v1/runs/{run_id}").json()
 
         assert restarted_detail["run"]["status"] == "completed"
-        assert restarted_detail["run"]["selected_model"] == "dummy"
+        assert restarted_detail["run"]["selected_model"] == "lightgbm"
         assert restarted_client.get(f"/api/v1/runs/{run_id}/results").json() == first_results
         assert restarted_client.get(f"/api/v1/runs/{run_id}/evaluation").json() == first_evaluation
         assert restarted_client.get(f"/api/v1/datasets/{dataset_id}/file").content == csv_bytes
@@ -742,7 +755,7 @@ def test_restart_marks_unfinished_work_failed_without_deleting_original_dataset(
                         owner_id=owner_id,
                         dataset_id=dataset_id,
                         status="running",
-                        configuration=run_request(dataset_id, models=["dummy"]),
+                        configuration=run_request(dataset_id, models=["lightgbm"]),
                         input_sha256=hashlib.sha256(csv_bytes).hexdigest(),
                     ),
                     ModelRun(
@@ -750,9 +763,9 @@ def test_restart_marks_unfinished_work_failed_without_deleting_original_dataset(
                         owner_id=owner_id,
                         dataset_id=dataset_id,
                         status="completed",
-                        configuration=run_request(dataset_id, models=["dummy"]),
+                        configuration=run_request(dataset_id, models=["lightgbm"]),
                         input_sha256=hashlib.sha256(csv_bytes).hexdigest(),
-                        selected_model="dummy",
+                        selected_model="lightgbm",
                         evaluation_status="running",
                     ),
                 ]
@@ -804,7 +817,7 @@ def test_run_endpoints_are_documented_with_json_and_common_errors(run_client):
     assert "application/json" in paths["/api/v1/runs"]["post"]["requestBody"]["content"]
     assert "post" in paths["/api/v1/runs/{run_id}/selection"]
     assert {"post", "get"} <= paths["/api/v1/runs/{run_id}/evaluation"].keys()
-    run_schema = schema["components"]["schemas"]["RunCreate"]
+    run_schema = schema["components"]["schemas"]["NewRunCreate"]
 
     assert {"dataset_id", "feature_columns", "models", "train_end", "validation_end"} <= set(
         run_schema["required"]
@@ -813,3 +826,45 @@ def test_run_endpoints_are_documented_with_json_and_common_errors(run_client):
     assert paths["/api/v1/runs"]["post"]["responses"]["422"]["content"]["application/json"][
         "schema"
     ]["$ref"].endswith("/ErrorResponse")
+
+
+def test_retired_dummy_cannot_create_new_training_or_queue_record(run_client):
+    dataset_id = upload_dataset(run_client)
+
+    response = run_client.post(
+        "/api/v1/runs",
+        json=run_request(dataset_id, models=["dummy"]),
+        headers=WRITE_HEADERS,
+    )
+
+    assert_api_error(response, 422)
+    assert run_client.get("/api/v1/runs").json()["total"] == 0
+
+
+def test_old_dummy_run_configuration_and_results_remain_readable(run_client):
+    dataset_id = upload_dataset(run_client)
+
+    owner_id = run_client.get("/api/v1/auth/me").json()["user"]["id"]
+
+    old_run_id = "d" * 32
+
+    # 기존 DB에 남은 실행은 새 모델 선택 목록과 무관하게 원래 키로 읽는다.
+    with run_client.app.state.database.session_factory() as database_session:
+        database_session.add(
+            ModelRun(
+                id=old_run_id,
+                owner_id=owner_id,
+                dataset_id=dataset_id,
+                status="completed",
+                configuration=run_request(dataset_id, models=["dummy"]),
+                input_sha256=hashlib.sha256(prepared_csv()).hexdigest(),
+                selected_model="dummy",
+            )
+        )
+        database_session.commit()
+    detail = run_client.get(f"/api/v1/runs/{old_run_id}")
+
+    assert detail.status_code == 200
+    assert detail.json()["configuration"]["models"] == ["dummy"]
+    assert detail.json()["run"]["selected_model"] == "dummy"
+    assert run_client.get(f"/api/v1/runs/{old_run_id}/evaluation").json()["model_key"] == "dummy"

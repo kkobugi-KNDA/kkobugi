@@ -78,7 +78,8 @@ CSV가 아닌 파일명은 `415`, 크기·행 수 초과는 `413`이다. 기본 
 
 ## 모델 학습·비교·선택
 
-모델 목록은 API에서 받아 표시한다. 이름 대신 `dummy`, `xgboost`, `autoencoder` key를 요청에 사용한다.
+모델 목록은 API에서 받아 표시한다. `xgboost`, `lightgbm`, `autoencoder` key로 선택한다.
+Dummy는 새 학습 목록에서 제외한다. 이미 저장한 Dummy 실행·모델·결과는 계속 조회한다.
 
 | 메서드·주소 | 요청 | 응답 |
 | --- | --- | --- |
@@ -99,7 +100,7 @@ CSV가 아닌 파일명은 `415`, 크기·행 수 초과는 `413`이다. 기본 
 {
   "dataset_id": "CSV 등록 응답의 dataset.id",
   "feature_columns": ["sensor_00", "sensor_04"],
-  "models": ["dummy", "xgboost", "autoencoder"],
+  "models": ["xgboost", "lightgbm", "autoencoder"],
   "train_end": "2018-06-30T23:59:00",
   "validation_end": "2018-07-31T23:59:00",
   "ranking_metric": "f1",
@@ -112,7 +113,7 @@ CSV가 아닌 파일명은 `415`, 크기·행 수 초과는 `413`이다. 기본 
 - Train: `시각 <= train_end`, Valid: `train_end < 시각 <= validation_end`, Test: 나머지 이후 행.
 - 세 구간에 각각 데이터가 있어야 한다. 시간대 표기는 CSV와 일치해야 한다.
 - 서버는 행을 섞거나 stratify·보간·PCA·특징 추가·오버샘플링을 수행하지 않는다.
-- XGBoost는 Train에 두 라벨이 필요하다. AutoEncoder는 정상 Train이 두 행 이상 필요하다.
+- XGBoost·LightGBM은 Train에 두 라벨이 필요하다. AutoEncoder는 정상 Train이 두 행 이상 필요하다.
 - AutoEncoder의 스케일러·재구성 신경망은 정상 Train만 학습한다. 기준은 정상 Train 오차의 99분위다.
 - Valid·Test에서는 신경망과 기준값을 바꾸지 않는다. 재구성 오차는 고장 확률로 표시하지 않는다.
 
@@ -143,14 +144,85 @@ Test 평가를 시작하면 모델 선택이 잠긴다. 바꾸려는 요청은 `
 기본 대기 한도는 실행 중 작업 포함 8개이며 초과하면 `429`다. 기본 학습 제한은 25만 행·128개 특징이다.
 완료한 결과는 재시작 후 유지하고, 강제 종료로 끝내지 못한 작업은 다음 시작 때 `failed`로 표시한다.
 
+## 구간 그래프·예측 조회
+
+아래 주소도 `/api/v1` 뒤에 붙인다. 조회는 원본 CSV·학습 모델을 수정하지 않는다.
+
+| 메서드·주소 | 요청 | 응답 |
+| --- | --- | --- |
+| `GET /datasets/{dataset_id}/series` | `channels` 반복, `start_time`, `end_time`, `max_points=2000` | 같은 시각에 맞춘 채널값·원본 라벨 |
+| `GET /datasets/{dataset_id}/label-intervals` | `code=1`, 시각 범위, `limit=100`, `offset=0` | 원본 라벨이 1인 구간 |
+| `GET /runs/{run_id}/predictions` | `split=validation`, `model_key`, 시각 범위, `limit=1000`, `offset=0` | 행별 실제 라벨·예측 라벨·점수 |
+| `GET /runs/{run_id}/prediction-intervals` | 같은 실행 조건, `predicted_code=1`, `limit=100`, `offset=0` | 예측값이 1인 구간 |
+
+```text
+/api/v1/datasets/{dataset_id}/series?channels=sensor_00&channels=sensor_04&start_time=2018-06-01T00:00:00&end_time=2018-06-01T01:00:00
+/api/v1/runs/{run_id}/predictions?model_key=lightgbm&split=validation
+```
+
+- 채널은 1~8개를 지정한다. `max_points` 범위는 64~10,000이다.
+- 많은 행은 공통 시간 묶음의 채널별 최솟값·최댓값 위치와 양끝을 남긴다. 평균·보간값을 만들지 않는다.
+- 응답의 `matched_count`는 원본 행 수, `returned_count`는 표시할 행 수다. `downsampled`로 축약 여부를 확인한다.
+- 원본 라벨 구간과 예측 구간은 그래프 축약과 별도로 계산한다. 짧은 1 구간도 조회할 수 있다.
+- 시각 범위는 양끝을 포함하며 한쪽만 지정할 수도 있다. 시간대가 있는 시각은 UTC로 맞추고, 없는 시각에는 시간대를 붙이지 않는다.
+- `row_index`는 원본 CSV의 0부터 시작하는 데이터 행 번호다. 구간의 행 범위는 `[start_row, end_row)`다.
+- 반복 관측 간격이 확인될 때만 연속 구간으로 묶는다. 기록이 비는 시간은 연결하지 않는다. `cadence_seconds=null`이면 각각의 관측으로 표시한다.
+- 입력 검사를 통과한 CSV만 조회한다. 확인할 값이 있으면 검사 결과를 먼저 확인한다.
+
+Valid는 해당 실행에서 학습한 모델을 지정해 비교할 수 있다. `model_key`를 생략하면 사용자가 선택한 모델을 사용하며, 아직 선택하지 않았으면 `409`다.
+Test 예측은 **선택한 모델의 Test 평가가 완료된 뒤**에만 조회한다. 조회 요청으로 학습·평가·모델 선택을 시작하지 않는다.
+분할 밖의 시각을 요청하면 해당 분할 안에서만 조회한다.
+
+XGBoost·LightGBM의 `score_type`은 `probability`이며, 점수는 등록한 이상 라벨의 모델 확률이다.
+AutoEncoder는 `reconstruction_error`와 학습 당시의 `threshold`를 반환한다. 고장 확률로 표시하지 않는다.
+예측은 저장한 특징 순서와 모델을 사용한다. CSV·모델의 해시나 실행 환경이 달라졌으면 오류로 반환한다.
+
+## 현장 관찰
+
+| 메서드·주소 | 요청 | 응답 |
+| --- | --- | --- |
+| `POST /observations` | 아래 JSON | `201`, 저장된 관찰·작성자·수정 번호 |
+| `GET /observations` | `dataset_id`, `run_id`, `channel`, 시각 범위, `limit=20`, `offset=0` | 내 관찰 목록·전체 개수 |
+| `GET /observations/{observation_id}` | 쿠키 | 관찰 내용 |
+| `PATCH /observations/{observation_id}` | 현재 `revision`과 수정할 항목 | 수정 내용·증가한 `revision` |
+| `GET /observations/{observation_id}/history` | `limit=20`, `offset=0` | 작성·수정 이력과 당시 내용 |
+
+```json
+{
+  "dataset_id": "CSV 등록 응답의 dataset.id",
+  "channel": "sensor_04",
+  "start_time": "2018-06-01T00:10:00",
+  "end_time": "2018-06-01T00:15:00",
+  "location": "현장에서 확인한 위치",
+  "content": "같은 시간대에 누수가 관찰됨. 원인은 추가 확인 필요.",
+  "judgment": "needs_check"
+}
+```
+
+모델 결과를 함께 남기려면 `run_id`와 선택적으로 `model_key`를 넣는다.
+연결할 실행은 본인 자료의 완료된 실행이어야 한다. 작성자·수정자는 로그인 계정으로 정한다.
+채널·구간은 원본에 있어야 하며, 관측값이 없는 시간만 선택하거나 자료 밖으로 벗어나면 `422`다.
+
+`judgment`는 `needs_check`(확인 필요), `anomaly_candidate`(이상 후보), `normal`(정상으로 판단)이다.
+사람의 판단을 원본 CSV 라벨이나 모델 예측으로 덮어쓰지 않는다. 검토 완료 상태도 별도 기능이다.
+
+```json
+{"revision": 1, "content": "현장 재확인: 누수 위치를 기록함.", "judgment": "anomaly_candidate"}
+```
+
+수정할 때는 마지막으로 조회한 `revision`을 보낸다. 먼저 다른 수정이 저장됐으면 `409 OBSERVATION_CONFLICT`다.
+최신 내용을 다시 읽고 수정한다. 데이터셋·연결 실행·모델은 생성 후 바꾸지 않는다.
+내용은 5,000자, 위치는 200자까지다. 생성과 수정은 각각 이력으로 남고 서버를 재시작해도 유지한다.
+
+목록의 채널·시각 필터에는 `dataset_id`도 지정한다. 시각 필터와 겹치는 관찰을 반환한다.
+관찰은 본인 계정에서만 조회·수정한다. 삭제·공동 편집 권한·알림은 이번 단계에 포함하지 않는다.
+
 ## 다음 단계의 연결 단위
 
 아래 기능은 아직 구현하지 않았다. CSV 등록 API와 별도로 이어서 개발한다.
 
 | Figma 기능 | API 연결 단위 |
 | --- | --- |
-| 채널 그래프·구간 확대 | `/datasets/{id}/series`: 채널·실제 시작/종료 시각 |
-| 현장 관찰 추가·수정 | `/observations`: 데이터셋·구간·관찰 내용·작성 계정 |
 | 검토 완료 | `/reviews`: 사람 판단과 검토 완료 상태를 각각 저장 |
 | RAG·보고서·문서 근거 | `/reports`, `/sources`: 실행 결과·관찰 기록·문서명·페이지·원문 |
 

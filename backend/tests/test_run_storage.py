@@ -114,7 +114,7 @@ def run_setup(tmp_path, monkeypatch):
     configuration = RunCreate(
         dataset_id=stored_dataset.id,
         feature_columns=["sensor_00"],
-        models=["dummy", "xgboost"],
+        models=["lightgbm", "xgboost"],
         train_end="2018-01-01T00:03:00",
         validation_end="2018-01-01T00:05:00",
     )
@@ -183,7 +183,7 @@ def test_completed_run_and_artifacts_survive_reopen(run_setup):
             assert restored_run.status == "completed"
             assert run_service.run_detail(restored_run).split.train.row_count == 4
             assert len(run_service.get_results(restored_run).items) == 2
-        assert (settings.model_storage_path / run_id / "dummy.joblib").is_file()
+        assert (settings.model_storage_path / run_id / "lightgbm.joblib").is_file()
         assert_original_dataset(run_setup)
     finally:
         restarted_manager.shutdown()
@@ -199,6 +199,21 @@ def test_closed_manager_does_not_create_queued_record(run_setup):
     assert error.value.status_code == 503
     with database.session_factory() as database_session:
         assert database_session.scalar(select(func.count()).select_from(ModelRun)) == 0
+
+
+def test_internal_create_rejects_retired_dummy_without_changing_source(run_setup):
+    database, _, current_user, _, configuration, manager = run_setup
+
+    legacy_configuration = configuration.model_copy(update={"models": ["dummy"]})
+
+    # HTTP 스키마를 거치지 않는 내부 호출도 새 Dummy 작업을 등록할 수 없다.
+    with database.session_factory() as database_session:
+        with pytest.raises(HTTPException) as error:
+            manager.create_run(database_session, current_user, legacy_configuration)
+        assert error.value.status_code == 422
+        assert error.value.detail["code"] == "MODEL_RETIRED"
+        assert database_session.scalar(select(func.count()).select_from(ModelRun)) == 0
+    assert_original_dataset(run_setup)
 
 
 def test_submit_failure_records_failed_run_and_keeps_source(run_setup, monkeypatch):
@@ -226,7 +241,7 @@ def test_training_failure_cleans_only_new_artifacts(run_setup, monkeypatch, exce
     database, settings, _, _, _, _ = run_setup
 
     def fail_after_partial_write(*args, artifact_directory, **kwargs):
-        (artifact_directory / "dummy.joblib").write_bytes(b"partial")
+        (artifact_directory / "lightgbm.joblib").write_bytes(b"partial")
         (artifact_directory / "metadata.json").write_text("{}", encoding="utf-8")
         raise exception
 
@@ -320,7 +335,7 @@ def test_evaluation_is_single_job_and_locks_model_choice(run_setup, monkeypatch)
     monkeypatch.setattr(run_service.modeling, "evaluate_model", blocked_evaluation)
     try:
         with database.session_factory() as database_session:
-            manager.select_model(database_session, run_id, current_user.id, "dummy")
+            manager.select_model(database_session, run_id, current_user.id, "lightgbm")
             _, first_pending = manager.start_evaluation(database_session, current_user, run_id)
 
             assert first_pending
@@ -340,7 +355,7 @@ def test_evaluation_is_single_job_and_locks_model_choice(run_setup, monkeypatch)
 
         assert not is_pending
         assert saved_result.metrics.accuracy == 1.0
-    assert evaluation_calls == ["dummy"]
+    assert evaluation_calls == ["lightgbm"]
     assert_original_dataset(run_setup)
 
 
@@ -350,7 +365,7 @@ def test_failed_evaluation_preserves_models_and_selection_lock(run_setup, monkey
     run_id = create_run(run_setup)
 
     wait_for_status(database, run_id, "completed")
-    model_path = settings.model_storage_path / run_id / "dummy.joblib"
+    model_path = settings.model_storage_path / run_id / "lightgbm.joblib"
 
     original_model_bytes = model_path.read_bytes()
 
@@ -359,7 +374,7 @@ def test_failed_evaluation_preserves_models_and_selection_lock(run_setup, monkey
 
     monkeypatch.setattr(run_service.modeling, "evaluate_model", failed_evaluation)
     with database.session_factory() as database_session:
-        manager.select_model(database_session, run_id, current_user.id, "dummy")
+        manager.select_model(database_session, run_id, current_user.id, "lightgbm")
         manager.start_evaluation(database_session, current_user, run_id)
     failed_run = wait_for_status(database, run_id, "failed", evaluation=True)
 
@@ -413,7 +428,7 @@ def test_existing_run_directory_is_never_removed_or_overwritten(run_setup, monke
     existing_directory = settings.model_storage_path / fixed_run_id
 
     existing_directory.mkdir(parents=True)
-    existing_file = existing_directory / "dummy.joblib"
+    existing_file = existing_directory / "lightgbm.joblib"
 
     existing_file.write_bytes(b"previous-run-model")
     monkeypatch.setattr(run_service, "uuid4", lambda: SimpleNamespace(hex=fixed_run_id))

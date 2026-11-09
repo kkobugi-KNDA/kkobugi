@@ -123,8 +123,10 @@ def test_invalid_or_ambiguous_configuration_is_rejected(updates):
 def test_catalog_matches_figma_and_exposes_autoencoder_score_meaning():
     definitions = {definition.key: definition for definition in get_model_catalog().items}
 
-    assert set(definitions) == {"dummy", "xgboost", "autoencoder"}
-    assert definitions["dummy"].kind == "baseline"
+    assert set(definitions) == {"lightgbm", "xgboost", "autoencoder"}
+    assert definitions["lightgbm"].kind == "classifier"
+    assert definitions["lightgbm"].parameters["n_jobs"] == 1
+    assert definitions["lightgbm"].parameters["deterministic"] is True
     assert definitions["xgboost"].parameters["n_jobs"] == 1
     assert definitions["autoencoder"].kind == "anomaly_detector"
     assert definitions["autoencoder"].parameters["training_scope"] == "normal_train_only"
@@ -378,7 +380,7 @@ def test_time_or_target_columns_cannot_be_features(model_data, tmp_path, leakage
 def test_all_figma_models_train_with_requested_seed_and_report_validation_only(
     model_data, tmp_path
 ):
-    configuration = run_configuration(["dummy", "xgboost", "autoencoder"], random_seed=7)
+    configuration = run_configuration(["lightgbm", "xgboost", "autoencoder"], random_seed=7)
 
     report = train(model_data(), configuration, tmp_path / "artifacts")
 
@@ -455,3 +457,140 @@ def test_explicit_aware_boundaries_use_same_instants(model_data, tmp_path):
 def test_unknown_estimator_is_not_imported():
     with pytest.raises(ValueError, match="지원하는 모델"):
         create_estimator("arbitrary_import", 42)
+
+
+def test_lightgbm_requires_both_train_labels_before_creating_artifacts(model_data, tmp_path):
+    source_path = model_data(labels=["normal"] * 12)
+
+    artifact_directory = tmp_path / "artifacts"
+
+    with pytest.raises(ValueError, match="LightGBM"):
+        train(source_path, run_configuration(["lightgbm"]), artifact_directory)
+    assert not artifact_directory.exists()
+
+
+def test_lightgbm_model_save_reload_and_test_predictions_use_same_features(tmp_path, monkeypatch):
+    source_path = tmp_path / "lightgbm.csv"
+
+    start_time = datetime(2026, 11, 9)
+
+    # 두 클래스에 각각 충분한 Train 표본을 만들어 실제 분기·예측을 확인한다.
+    with source_path.open("w", encoding="utf-8", newline="") as source_file:
+        writer = csv.writer(source_file)
+
+        writer.writerow(["timestamp", "sensor_a", "sensor_b", "label"])
+        for row_index in range(100):
+            is_abnormal = row_index % 2 == 1
+
+            writer.writerow(
+                [
+                    (start_time + timedelta(minutes=row_index)).isoformat(),
+                    10 if is_abnormal else 0,
+                    row_index / 100,
+                    "abnormal" if is_abnormal else "normal",
+                ]
+            )
+    configuration = run_configuration(
+        ["lightgbm"],
+        train_end=(start_time + timedelta(minutes=59)).isoformat(),
+        validation_end=(start_time + timedelta(minutes=79)).isoformat(),
+    )
+
+    artifact_directory = tmp_path / "artifacts"
+
+    report = train(source_path, configuration, artifact_directory)
+
+    model_result = report["models"][0]
+
+    assert "lightgbm" in report["environment"]
+    assert model_result["validation_metrics"]["f1"] == 1.0
+    stored_estimator = joblib.load(artifact_directory / "lightgbm.joblib")
+
+    assert stored_estimator.n_features_in_ == 2
+    assert stored_estimator.get_params()["random_state"] == 42
+    assert stored_estimator.get_params()["n_jobs"] == 1
+
+    def forbid_fit(*arguments, **keyword_arguments):
+        raise AssertionError("Test 조회 중 재학습하면 안 됩니다.")
+
+    monkeypatch.setattr(type(stored_estimator), "fit", forbid_fit)
+    metrics = modeling.evaluate_model(
+        source_path,
+        configuration,
+        normal_label="normal",
+        abnormal_label="abnormal",
+        expected_sha256=source_hash(source_path),
+        artifact_directory=artifact_directory,
+        model_key="lightgbm",
+        expected_artifact_sha256=model_result["artifact_sha256"],
+    )
+
+    assert metrics.f1 == 1.0
+    assert metrics.sample_count == 20
+
+
+def test_legacy_artifact_without_lightgbm_version_still_evaluates(model_data, tmp_path):
+    source_path = model_data()
+
+    configuration = run_configuration(["dummy"])
+
+    artifact_directory = tmp_path / "legacy-artifacts"
+
+    report = train(source_path, configuration, artifact_directory)
+
+    metadata = json.loads((artifact_directory / "metadata.json").read_text(encoding="utf-8"))
+
+    assert "lightgbm" not in metadata["environment"]
+    metrics = modeling.evaluate_model(
+        source_path,
+        configuration,
+        normal_label="normal",
+        abnormal_label="abnormal",
+        expected_sha256=source_hash(source_path),
+        artifact_directory=artifact_directory,
+        model_key="dummy",
+        expected_artifact_sha256=report["models"][0]["artifact_sha256"],
+    )
+
+    assert metrics.sample_count == 3
+
+
+@pytest.mark.parametrize("version_change", ["missing", "different"])
+def test_lightgbm_version_is_checked_before_loading_model(
+    model_data, tmp_path, monkeypatch, version_change
+):
+    source_path = model_data()
+
+    configuration = run_configuration(["lightgbm"])
+
+    artifact_directory = tmp_path / "artifacts"
+
+    report = train(source_path, configuration, artifact_directory)
+
+    metadata_path = artifact_directory / "metadata.json"
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    # 버전 키가 빠지거나 달라진 LightGBM 파일을 역직렬화하지 않는지 확인한다.
+    if version_change == "missing":
+        del metadata["environment"]["lightgbm"]
+    else:
+        metadata["environment"]["lightgbm"] = "different-version"
+
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    def reject_load(*arguments, **keyword_arguments):
+        raise AssertionError("패키지 버전을 확인하기 전에 모델을 읽으면 안 됩니다.")
+
+    monkeypatch.setattr(modeling.joblib, "load", reject_load)
+    with pytest.raises(ValueError):
+        modeling.load_trained_model(
+            source_path,
+            configuration,
+            normal_label="normal",
+            abnormal_label="abnormal",
+            expected_sha256=source_hash(source_path),
+            artifact_directory=artifact_directory,
+            model_key="lightgbm",
+            expected_artifact_sha256=report["models"][0]["artifact_sha256"],
+        )

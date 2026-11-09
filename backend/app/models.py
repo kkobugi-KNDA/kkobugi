@@ -140,3 +140,63 @@ class ModelRun(Base):
     created_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
 
     updated_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+
+class Observation(Base):
+    """현장 관찰은 원본 라벨과 모델 예측을 바꾸지 않는 별도 기록으로 남긴다."""
+
+    __tablename__ = "observations"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
+
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("model_runs.id"), index=True)
+
+    model_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    channel: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    # 시간대가 있으면 UTC로 통일하고, 없으면 원본과 같이 시간대를 붙이지 않는다.
+    start_time: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    end_time: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    location: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+
+    content: Mapped[str] = mapped_column(String(5000), nullable=False)
+
+    judgment: Mapped[str] = mapped_column(String(32), default="needs_check", nullable=False)
+
+    # 수정 요청이 읽었던 버전과 현재 버전을 비교해 다른 수정을 덮어쓰지 않는다.
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    last_editor_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    created_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    updated_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+
+class ObservationHistory(Base):
+    """작성 당시의 전체 내용을 저장해 현재 기록과 별도로 수정 이력을 보존한다."""
+
+    __tablename__ = "observation_history"
+
+    __table_args__ = (
+        UniqueConstraint("observation_id", "revision", name="uq_observation_history_revision"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    observation_id: Mapped[str] = mapped_column(ForeignKey("observations.id"), index=True)
+
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    changed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    changed_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)

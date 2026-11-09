@@ -260,6 +260,13 @@ class RunManager:
     def create_run(
         self, database_session: Session, current_user: User, request: RunCreate
     ) -> RunDetail:
+        # HTTP 검증 외의 내부 호출에서도 새 Dummy 학습 등록을 막는다.
+        if "dummy" in request.models:
+            raise _run_error(
+                422,
+                "MODEL_RETIRED",
+                "Dummy는 기존 결과만 조회할 수 있습니다. 현재 모델을 선택하세요.",
+            )
         with self._lock:
             try:
                 dataset = dataset_service.get_dataset(

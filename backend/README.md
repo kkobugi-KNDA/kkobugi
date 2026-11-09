@@ -49,3 +49,11 @@ uv run python -m app.cli create-user --username minho --display-name 박민호
 모델 비교는 `GET /api/v1/models` → `POST /api/v1/runs` → Valid 결과 비교 → 사용자 선택 → Test 평가 순서다.
 시간 분할 경계는 사용자가 직접 지정한다. 이 로컬 실행은 API 프로세스 하나에서 작업을 차례로 처리한다.
 입력과 실행 예시는 [API.md](API.md)를 따른다.
+
+새 학습 모델은 XGBoost·LightGBM·AutoEncoder다. 이전 Dummy 실행은 그대로 읽을 수 있다.
+구간 그래프·원본 라벨·예측 구간은 조회 API로 연결한다. 현장 관찰은 원본과 분리해 DB에 저장하고,
+수정 번호와 이력을 남긴다. 전체 주소와 요청 형식은 [API.md](API.md)에 정리했다.
+
+다른 worktree에서 같은 로컬 자료를 사용할 때는 `.env`의 `KKOBUGI_DATABASE_PATH`,
+`KKOBUGI_DATASET_STORAGE_PATH`, `KKOBUGI_MODEL_STORAGE_PATH`를 기존 저장소의 절대 경로로 맞춘다.
+DB만 옮기고 CSV·모델 폴더를 빼면 기록에 연결된 파일을 읽을 수 없다. `.env`와 실제 자료는 커밋하지 않는다.
