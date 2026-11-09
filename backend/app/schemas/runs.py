@@ -14,6 +14,29 @@ RankingMetric = Literal[
     "f1", "precision", "recall", "accuracy", "balanced_accuracy", "roc_auc", "average_precision"
 ]
 
+
+class XGBoostOptions(BaseModel):
+    """서버 메모리와 실행 시간을 제한한 사용자의 학습 옵션."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    n_estimators: int = Field(default=100, ge=20, le=300)
+
+    max_depth: int = Field(default=4, ge=2, le=8)
+
+    learning_rate: float = Field(default=0.1, ge=0.01, le=0.3)
+
+
+class AutoencoderOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    max_iter: int = Field(default=100, ge=20, le=200)
+
+    hidden_size: int = Field(default=32, ge=8, le=64)
+
+    threshold_quantile: float = Field(default=0.99, ge=0.95, le=0.999)
+
+
 RunStatus = Literal["queued", "running", "completed", "failed"]
 
 EvaluationStatus = Literal["not_started", "queued", "running", "completed", "failed"]
@@ -37,6 +60,27 @@ class RunCreate(BaseModel):
     ranking_metric: RankingMetric = "f1"
 
     random_seed: int = Field(default=42, ge=0, le=2_147_483_647)
+
+    # 빈 옵션은 저장 결과에서 생략해 기존 모델 metadata와 정확히 호환한다.
+    model_options: dict[str, dict[str, int | float]] = Field(
+        default_factory=dict, exclude_if=lambda options: not options
+    )
+
+    @field_validator("model_options", mode="before")
+    @classmethod
+    def validate_model_options(cls, options: object) -> dict:
+        if not isinstance(options, dict):
+            raise ValueError("모델 옵션은 모델별 항목으로 지정하세요.")
+        schemas = {"xgboost": XGBoostOptions, "autoencoder": AutoencoderOptions}
+
+        validated = {}
+
+        for model_key, values in options.items():
+            if model_key not in schemas:
+                raise ValueError("XGBoost와 AutoEncoder 옵션만 설정할 수 있습니다.")
+            validated[model_key] = schemas[model_key].model_validate(values).model_dump()
+
+        return validated
 
     @field_validator("feature_columns")
     @classmethod
@@ -69,6 +113,8 @@ class RunCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_boundaries(self) -> "RunCreate":
+        if not set(self.model_options).issubset(self.models):
+            raise ValueError("학습할 모델의 옵션만 지정하세요.")
         if (self.train_end.tzinfo is None) != (self.validation_end.tzinfo is None):
             raise ValueError("두 분할 경계의 시간대 표기를 같게 지정하세요.")
         if self.train_end >= self.validation_end:
@@ -188,6 +234,22 @@ class RunSummary(BaseModel):
     error_message: str | None
 
 
+class TrainingProgressEvent(BaseModel):
+    """실제로 시작·완료·실패한 학습 단계의 기록. 진행률을 추측하지 않는다."""
+
+    stage: Literal[
+        "data_check", "split", "input_preparation", "training", "validation", "saving", "completed"
+    ]
+
+    status: Literal["running", "completed", "failed"]
+
+    timestamp: int = Field(ge=0)
+
+    message: str
+
+    model_key: ModelKey | None = None
+
+
 class RunDetail(BaseModel):
     run: RunSummary
 
@@ -200,6 +262,9 @@ class RunDetail(BaseModel):
     environment: dict[str, str]
 
     warnings: list[str]
+
+    # 이전 실행은 기록을 복원해 만들지 않고 빈 목록으로 보여준다.
+    training_progress: list[TrainingProgressEvent] = Field(default_factory=list)
 
 
 class RunList(BaseModel):

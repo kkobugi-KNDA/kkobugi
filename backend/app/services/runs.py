@@ -30,6 +30,7 @@ from app.schemas.runs import (
     RunResults,
     RunSummary,
     SplitInfo,
+    TrainingProgressEvent,
 )
 from app.services import datasets as dataset_service
 from app.services import modeling
@@ -103,6 +104,7 @@ def run_detail(model_run: ModelRun) -> RunDetail:
             else None,
             environment=training_report.get("environment", {}),
             warnings=training_report.get("warnings", []),
+            training_progress=training_report.get("training_progress", []),
         )
     except (ValidationError, KeyError, TypeError):
         raise _unavailable() from None
@@ -198,6 +200,7 @@ class RunManager:
         self.database = database
 
         self.settings = settings
+
         self.memory_gate = memory_gate if memory_gate is not None else MemoryWorkGate()
 
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kkobugi-model")
@@ -209,15 +212,23 @@ class RunManager:
     def recover_interrupted(self) -> None:
         # 완료한 결과는 그대로 두고, 이전 프로세스에서 끝내지 못한 작업만 실패로 표시한다.
         with self.database.session_factory() as database_session:
-            database_session.execute(
-                update(ModelRun)
-                .where(ModelRun.status.in_(["queued", "running"]))
-                .values(
-                    status="failed",
-                    error_message="서버 재시작으로 학습이 중단됐습니다. 새 실행을 등록하세요.",
-                    updated_at=int(time.time()),
+            interrupted_runs = database_session.scalars(
+                select(ModelRun).where(ModelRun.status.in_(["queued", "running"]))
+            ).all()
+
+            for model_run in interrupted_runs:
+                model_run.status = "failed"
+
+                model_run.error_message = (
+                    "서버 재시작으로 학습이 중단됐습니다. 새 실행을 등록하세요."
                 )
-            )
+
+                model_run.updated_at = int(time.time())
+
+                model_run.training_report = self._failed_progress(
+                    model_run.training_report, model_run.error_message
+                )
+
             database_session.execute(
                 update(ModelRun)
                 .where(ModelRun.evaluation_status.in_(["queued", "running"]))
@@ -461,11 +472,61 @@ class RunManager:
 
                     model_run.error_message = message
 
+                    model_run.training_report = self._failed_progress(
+                        model_run.training_report, message
+                    )
+
                 model_run.updated_at = int(time.time())
 
                 database_session.commit()
         except SQLAlchemyError:
             logger.exception("실패한 모델 실행 상태를 저장하지 못했습니다.")
+
+    @staticmethod
+    def _failed_progress(training_report: dict | None, message: str) -> dict | None:
+        if not training_report or not training_report.get("training_progress"):
+            # 시작한 기록이 없는 옛 실행에는 완료·실패 단계를 지어내지 않는다.
+            return training_report
+        report = dict(training_report)
+
+        events = list(report["training_progress"])
+
+        last_event = events[-1]
+
+        events.append(
+            TrainingProgressEvent(
+                stage="saving" if last_event["stage"] == "completed" else last_event["stage"],
+                status="failed",
+                timestamp=int(time.time()),
+                message=message,
+                model_key=last_event.get("model_key"),
+            ).model_dump()
+        )
+        report["training_progress"] = events
+
+        return report
+
+    def _record_progress(self, run_id: str, event: dict) -> None:
+        validated_event = TrainingProgressEvent.model_validate(event)
+
+        # 긴 학습 중에도 조회 요청이 볼 수 있도록 짧은 별도 DB 세션으로 즉시 저장한다.
+        with self.database.session_factory() as progress_session:
+            model_run = progress_session.get(ModelRun, run_id)
+
+            if model_run is None or model_run.status != "running":
+                return
+            report = dict(model_run.training_report or {})
+
+            events = list(report.get("training_progress", []))
+
+            events.append(validated_event.model_dump())
+            report["training_progress"] = events
+
+            model_run.training_report = report
+
+            model_run.updated_at = validated_event.timestamp
+
+            progress_session.commit()
 
     def _train_run(self, run_id: str) -> None:
         new_artifact_directory: Path | None = None
@@ -504,7 +565,13 @@ class RunManager:
                         label_column=dataset.label_column,
                         expected_sha256=model_run.input_sha256,
                         artifact_directory=artifact_directory,
+                        progress_callback=lambda event: self._record_progress(run_id, event),
                     )
+
+                database_session.refresh(model_run, attribute_names=["training_report"])
+                training_report["training_progress"] = (model_run.training_report or {}).get(
+                    "training_progress", []
+                )
 
                 model_run.training_report = training_report
 

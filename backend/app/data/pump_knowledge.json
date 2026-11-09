@@ -1,0 +1,60 @@
+{
+  "version": "2026-11-09",
+  "provenance": "팀 RAG_자료조사_이한결_FINAL 02 지식베이스를 토대로 DOE 원문에서 확인한 범위만 요약. 특정 공정이나 익명 센서에 부품을 자동 연결하지 않음.",
+  "chunks": [
+    {
+      "id": "DOE-SEALS",
+      "title": "Improving Pumping System Performance 2nd edition",
+      "url": "https://www.energy.gov/sites/prod/files/2014/05/f16/pump.pdf",
+      "pages": "PDF 25-26, 37-38",
+      "tags": ["누수", "축봉", "씰", "패킹", "물", "seal", "leak"],
+      "summary": "축봉부에 물이 보이면 먼저 패킹 방식인지 메카니컬 씰 방식인지 확인한다. 패킹은 냉각과 윤활을 위한 누수가 필요할 수 있다. 누수 위치와 제작사 허용 기준을 확인하기 전에는 씰 파손이나 교체 필요를 확정하지 않는다.",
+      "checks": ["누수 위치와 축봉 방식을 확인하고 사진 또는 점검 기록을 남긴다.", "제작사 매뉴얼의 허용 누수량과 현재 관찰을 대조한다."]
+    },
+    {
+      "id": "DOE-CAVITATION",
+      "title": "Improving Pumping System Performance 2nd edition",
+      "url": "https://www.energy.gov/sites/prod/files/2014/05/f16/pump.pdf",
+      "pages": "PDF 24-25",
+      "tags": ["진동", "소음", "자갈", "캐비테이션", "흡입", "vibration", "noise", "cavitation"],
+      "summary": "캐비테이션은 압력 조건과 관련되고 소음, 성능 저하 및 손상과 함께 나타날 수 있다. 소음이나 모델의 이상 판정만으로 캐비테이션을 확정하지 않는다. 흡입 상태와 유체 조건, 유량 및 제작사 운전 범위를 함께 확인한다.",
+      "checks": ["소음과 진동의 발생 위치 및 운전 시각을 함께 기록한다.", "흡입 압력, 유량, 유체 온도와 운전 조건을 확인한다."]
+    },
+    {
+      "id": "DOE-MAINTENANCE",
+      "title": "Improving Pumping System Performance 2nd edition",
+      "url": "https://www.energy.gov/sites/prod/files/2014/05/f16/pump.pdf",
+      "pages": "PDF 37-40",
+      "tags": ["베어링", "정비", "윤활", "온도", "점검", "보고서", "bearing", "maintenance", "temperature"],
+      "summary": "예방 정비 기록과 상태 측정은 추세를 이해하는 데 사용한다. 이상 위치와 운전 조건, 진동 및 온도, 윤활 상태, 이전 정비 내용을 함께 확인한다. 정비 주기와 교체 기준은 해당 설비 제작사 지침과 현장 절차를 따른다.",
+      "checks": ["설비 명판과 해당 부품의 최근 정비 이력을 확인한다.", "관찰한 사실, 확인하지 못한 원인과 다음 점검 항목을 구분해 기록한다."]
+    },
+    {
+      "id": "DOE-DATA-SCOPE",
+      "title": "Improving Pumping System Performance 2nd edition",
+      "url": "https://www.energy.gov/sites/prod/files/2014/05/f16/pump.pdf",
+      "pages": "PDF 40-43",
+      "tags": ["센서", "채널", "데이터", "모델", "결과", "이상", "sensor", "prediction"],
+      "summary": "상태 진단에는 측정 위치, 단위, 운전 조건과 추세가 필요하다. 이 앱의 익명 센서 이름과 특정 부품의 연결 정보는 제공되지 않았다. 모델 결과는 추가 점검을 위한 단서이며 고장 원인이나 부품 교체 지시로 바꾸지 않는다.",
+      "checks": ["채널의 실제 측정 위치와 단위를 설비 담당자에게 확인한다.", "동일 시간대의 운전 상태와 현장 관찰을 모델 결과와 대조한다."]
+    },
+    {
+      "id": "DOE-LCC-METHOD",
+      "title": "Pump Life Cycle Costs Executive Summary",
+      "url": "https://www1.eere.energy.gov/manufacturing/tech_assistance/pdfs/pumplcc_1001.pdf",
+      "pages": "PDF 6, 9-11",
+      "tags": ["비용", "견적", "가격", "교체", "부품비", "작업비", "정지", "손실", "cost", "price", "lcc"],
+      "summary": "비용 비교는 부품 및 정비 작업비와 운전 정지 손실을 구분하고 동일한 조건에서 계산한다. 단가와 작업 시간은 견적이나 현장 자료가 필요하다. 누락된 값은 설명을 남기며 이 문헌은 현재 원화 부품 가격표가 아니다.",
+      "checks": ["부품명과 규격을 확인한 뒤 실제 견적 또는 사내 단가의 출처를 입력한다.", "점검비, 부품비, 작업 시간 및 인건비, 실제 생산 중단 시간과 시간당 손실을 입력한다."]
+    },
+    {
+      "id": "DOE-LCC-DOWNTIME",
+      "title": "Pump Life Cycle Costs Executive Summary",
+      "url": "https://www1.eere.energy.gov/manufacturing/tech_assistance/pdfs/pumplcc_1001.pdf",
+      "pages": "PDF 10",
+      "tags": ["예비", "절체", "정지", "생산", "손실", "downtime", "standby"],
+      "summary": "생산 손실은 실제 중단 시간과 현장 조건에 따라 달라진다. 예비 펌프가 있으면 절체 가능성과 실제 생산 영향부터 확인한다. 예비 설비가 있다는 이유만으로 생산 손실을 자동으로 0원 처리하지 않는다.",
+      "checks": ["예비 펌프의 절체 가능 여부와 실제 생산 중단 시간을 확인한다."]
+    }
+  ]
+}

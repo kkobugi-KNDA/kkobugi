@@ -52,7 +52,7 @@ export default function LoginPage() {
             근거로 판단하세요.
           </h1>
           <p className="login-intro">
-            펌프 데이터 분석부터 모델 비교,
+            펌프 모델 학습부터 실시간 점검,
             <br />
             점검 기록까지 한곳에서 이어갑니다.
           </p>

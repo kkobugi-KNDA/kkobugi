@@ -121,7 +121,7 @@ export default function CostsPage() {
       </PageHeader>
       <Notice>
         먼저 모델 결과와 현장 관찰을 확인하세요. 비용은 사용자가 입력한 가정으로 계산하며, 고장
-        확률이나 실제 절감액을 예측하지 않습니다. <Link to="/models">모델 비교 보기 ↗</Link>
+        확률이나 실제 절감액을 예측하지 않습니다. <Link to="/models">모델 학습 보기 ↗</Link>
       </Notice>
       <section className="surface rv-cost-period">
         <div>

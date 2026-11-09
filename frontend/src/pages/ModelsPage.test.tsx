@@ -2,20 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import ModelsPage from './ModelsPage';
-import {
-  DEMO_DATASET_DETAIL,
-  DEMO_EVALUATION,
-  DEMO_MODELS,
-  DEMO_RESULTS,
-  DEMO_RUN_DETAIL,
-} from '../data/demo';
-import type { DatasetDetail, ModelDefinition, RunDetail } from '../types';
+import ModelsPage, { learningScore } from './ModelsPage';
+import ExpertiseToggle from '../components/ExpertiseToggle';
+import { ExpertiseProvider } from '../context/ExpertiseContext';
+import { DEMO_DATASET_DETAIL, DEMO_EVALUATION, DEMO_RESULTS, DEMO_RUN_DETAIL } from '../data/demo';
+import type { RunDetail, TrainingProgressEvent } from '../types';
 
 const mocks = vi.hoisted(() => ({
   useApp: vi.fn(),
+  prepareTraining: vi.fn(),
   api: {
-    models: vi.fn(),
     dataset: vi.fn(),
     run: vi.fn(),
     results: vi.fn(),
@@ -25,18 +21,20 @@ const mocks = vi.hoisted(() => ({
     evaluation: vi.fn(),
   },
 }));
+
 vi.mock('../context/AppContext', () => ({ useApp: mocks.useApp }));
 vi.mock('../lib/api', () => ({
   api: mocks.api,
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : '요청 오류'),
 }));
+vi.mock('../lib/training-api', () => ({ prepareTraining: mocks.prepareTraining }));
 
 function context(selectedRunId: string | null = null) {
   return {
     mode: 'live',
+    user: { id: 1, username: 'worker', display_name: '작업자' },
     datasets: [DEMO_DATASET_DETAIL.dataset],
     runs: selectedRunId ? [DEMO_RUN_DETAIL.run] : [],
-    runsLoading: false,
     selectedDatasetId: DEMO_DATASET_DETAIL.dataset.id,
     selectedRunId,
     setSelectedDatasetId: vi.fn(),
@@ -45,155 +43,456 @@ function context(selectedRunId: string | null = null) {
     toast: vi.fn(),
   };
 }
-const activeCatalog: ModelDefinition[] = [
-  DEMO_MODELS[1],
-  { ...DEMO_MODELS[1], key: 'lightgbm', display_name: 'LightGBM' },
-  DEMO_MODELS[2],
-];
-beforeEach(() => {
-  vi.resetAllMocks();
-  mocks.useApp.mockReturnValue(context());
-  mocks.api.models.mockResolvedValue({ items: activeCatalog });
-  mocks.api.dataset.mockResolvedValue(structuredClone(DEMO_DATASET_DETAIL));
-  mocks.api.results.mockResolvedValue(structuredClone(DEMO_RESULTS));
-  mocks.api.evaluation.mockResolvedValue(structuredClone(DEMO_EVALUATION));
-});
+
+function plan(model = 'xgboost') {
+  return {
+    configuration: {
+      ...DEMO_RUN_DETAIL.configuration,
+      models: [model],
+      model_options:
+        model === 'xgboost'
+          ? { xgboost: { n_estimators: 100, max_depth: 4, learning_rate: 0.1 } }
+          : { autoencoder: { max_iter: 100, hidden_size: 32, threshold_quantile: 0.99 } },
+    },
+    split: { train_rows: 210, validation_rows: 80, test_rows: 70 },
+    notes: ['시간 순서를 유지합니다.'],
+  };
+}
+
 function mount() {
   return render(
     <MemoryRouter>
-      <ModelsPage />
+      <ExpertiseProvider>
+        <ExpertiseToggle />
+        <ModelsPage />
+      </ExpertiseProvider>
     </MemoryRouter>,
   );
 }
 
-describe('모델 비교의 명시적 학습·선택·평가', () => {
+beforeEach(() => {
+  localStorage.clear();
+  vi.resetAllMocks();
+  mocks.useApp.mockReturnValue(context());
+  mocks.api.dataset.mockResolvedValue(structuredClone(DEMO_DATASET_DETAIL));
+  mocks.api.results.mockResolvedValue(structuredClone(DEMO_RESULTS));
+  mocks.api.evaluation.mockResolvedValue(structuredClone(DEMO_EVALUATION));
+  mocks.prepareTraining.mockImplementation(async (request) => plan(request.model_key));
+  mocks.api.createRun.mockResolvedValue({
+    ...structuredClone(DEMO_RUN_DETAIL),
+    run: { ...DEMO_RUN_DETAIL.run, status: 'queued', selected_model: null },
+  });
+});
+
+describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
+  it('학습 전에는 진행할 순서만 안내하고 완료 상태를 만들어내지 않는다', () => {
+    mount();
+    const preview = screen.getByRole('region', { name: '학습을 시작하면 진행할 순서' });
+
+    expect(within(preview).getAllByRole('listitem')).toHaveLength(7);
+    expect(within(preview).getByText('원본 확인')).toBeInTheDocument();
+    expect(within(preview).getByText('모델 저장')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: '실제 학습 단계' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('예전 완료 실행에 단계별 기록이 없으면 실제 단계 완료를 추측하지 않는다', async () => {
+    mocks.useApp.mockReturnValue(context(DEMO_RUN_DETAIL.run.id));
+    mocks.api.run.mockResolvedValue(structuredClone(DEMO_RUN_DETAIL));
+    mount();
+    expect(
+      await screen.findByText(
+        '이 실행에는 단계별 진행 기록이 없어요. 저장된 전체 상태만 확인할 수 있어요.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: '실제 학습 단계' })).not.toBeInTheDocument();
+  });
+
+  it('서버가 실제로 기록한 단계만 표시하고 같은 run 조회로 저장 완료까지 갱신한다', async () => {
+    const starting = structuredClone(DEMO_RUN_DETAIL);
+
+    const firstEvent: TrainingProgressEvent = {
+      stage: 'training',
+      status: 'running',
+      timestamp: 1794260000,
+      message: '선택한 XGBoost 학습을 시작했습니다.',
+      model_key: 'xgboost',
+    };
+
+    starting.run.status = 'running';
+    starting.configuration.models = ['xgboost'];
+    starting.training_progress = [
+      {
+        stage: 'data_check',
+        status: 'completed',
+        timestamp: 1794259990,
+        message: '등록된 CSV 해시를 확인했습니다.',
+      },
+      firstEvent,
+    ];
+    const finished = structuredClone(starting);
+
+    finished.run.status = 'completed';
+    finished.training_progress = [
+      ...starting.training_progress,
+      {
+        ...firstEvent,
+        status: 'completed',
+        timestamp: 1794260002,
+        message: 'XGBoost 학습을 마쳤습니다.',
+      },
+      {
+        stage: 'saving',
+        status: 'completed',
+        timestamp: 1794260003,
+        message: '모델 파일을 저장했습니다.',
+      },
+      {
+        stage: 'completed',
+        status: 'completed',
+        timestamp: 1794260004,
+        message: '선택한 모델의 저장을 마쳤습니다.',
+      },
+    ];
+    mocks.useApp.mockReturnValue(context(starting.run.id));
+    mocks.api.run.mockResolvedValueOnce(starting).mockResolvedValue(finished);
+    const user = userEvent.setup();
+
+    mount();
+    const process = await screen.findByRole('region', { name: '실제 학습 과정' });
+
+    expect(within(process).getByLabelText('모델 학습: 진행 중')).toBeInTheDocument();
+    expect(within(process).getByLabelText('모델 저장: 기록 없음')).toBeInTheDocument();
+    expect(within(process).queryByRole('progressbar')).not.toBeInTheDocument();
+    await waitFor(
+      () => expect(within(process).getByLabelText('학습 완료: 완료')).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
+    expect(within(process).getByLabelText('모델 저장: 완료')).toBeInTheDocument();
+    expect(within(process).getByLabelText('데이터 나누기: 기록 없음')).toBeInTheDocument();
+    await user.click(within(process).getByText('실제 진행 기록과 사용한 설정'));
+    const timeline = within(process).getByRole('list', { name: '서버의 실제 진행 기록' });
+
+    expect(within(timeline).getByText(firstEvent.message)).toBeInTheDocument();
+    expect(within(timeline).getByText('모델 파일을 저장했습니다.')).toBeInTheDocument();
+    expect(timeline.querySelector('time')).toHaveAttribute(
+      'datetime',
+      new Date(1794259990 * 1000).toISOString(),
+    );
+    expect(within(process).getByText('pump-demo.csv')).toBeInTheDocument();
+  });
+
+  it('실패한 실제 단계를 표시하고 뒤 단계가 완료된 것처럼 보이지 않는다', async () => {
+    const run = structuredClone(DEMO_RUN_DETAIL);
+
+    run.run.status = 'failed';
+    run.training_progress = [
+      {
+        stage: 'input_preparation',
+        status: 'failed',
+        timestamp: 1794260000,
+        message: '선택한 채널에서 숫자가 아닌 값을 확인했습니다.',
+      },
+    ];
+    mocks.useApp.mockReturnValue(context(run.run.id));
+    mocks.api.run.mockResolvedValue(run);
+    mount();
+    const process = await screen.findByRole('region', { name: '실제 학습 과정' });
+
+    expect(within(process).getByLabelText('학습 자료 준비: 실패')).toBeInTheDocument();
+    expect(
+      within(within(process).getByLabelText('학습 자료 준비: 실패')).getByText(
+        '선택한 채널에서 숫자가 아닌 값을 확인했습니다.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(process).getByLabelText('모델 학습: 기록 없음')).toBeInTheDocument();
+    expect(within(process).getByLabelText('학습 완료: 기록 없음')).toBeInTheDocument();
+  });
+
+  it.each(['pro', 'pro-plus'] as const)(
+    '%s에서도 최종 확인의 이상 라벨 부족과 각 구간 분포를 학습 전에 표시한다',
+    async (expertise) => {
+      localStorage.setItem('kkobugi:expertise', expertise);
+      const warning =
+        '최종 확인 구간에 비정상 기록이 없어 비정상 탐지 점수를 계산할 수 없습니다. 날짜를 임의로 바꾸어 점수를 높이지 마세요.';
+
+      const technicalNote = 'AutoEncoder의 스케일·재구성망·이상 기준은 정상 Train에서만 만듭니다.';
+
+      mocks.prepareTraining.mockResolvedValue({
+        ...plan(),
+        notes: [technicalNote],
+        warnings: [warning],
+        label_counts: {
+          train: { normal: 190, abnormal: 20 },
+          validation: { normal: 70, abnormal: 10 },
+          test: { normal: 70, abnormal: 0 },
+        },
+      });
+      const user = userEvent.setup();
+
+      mount();
+      await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
+      await user.click(screen.getByRole('button', { name: '자동 설정' }));
+      expect(await screen.findByText(warning)).toBeInTheDocument();
+      const counts = screen.getByRole('table', { name: '각 구간의 라벨 분포' });
+
+      const testRow = within(counts).getByRole('row', {
+        name: expertise === 'pro-plus' ? 'Test 70행 0행' : '최종 확인 70행 0행',
+      });
+
+      expect(testRow).toBeInTheDocument();
+      if (expertise === 'pro') expect(screen.queryByText(technicalNote)).not.toBeInTheDocument();
+      expect(mocks.api.createRun).not.toHaveBeenCalled();
+      await user.click(screen.getByRole('button', { name: '학습 시작' }));
+      await waitFor(() =>
+        expect(mocks.api.createRun).toHaveBeenCalledExactlyOnceWith(plan().configuration),
+      );
+    },
+  );
+
+  it('목록의 예전 상태보다 현재 조회한 완료 상태를 학습 기록에 표시한다', async () => {
+    const run = structuredClone(DEMO_RUN_DETAIL);
+
+    const app = context(run.run.id);
+
+    app.runs[0] = { ...app.runs[0], status: 'running' };
+    mocks.useApp.mockReturnValue(app);
+    mocks.api.run.mockResolvedValue(run);
+    mount();
+    await screen.findByText('중간 확인 결과');
+    const option = within(screen.getByLabelText('학습 기록 선택')).getByRole('option', {
+      name: /pump-demo.csv/,
+    });
+
+    expect(option).toHaveTextContent('학습 완료');
+    expect(option).not.toHaveTextContent('학습 중');
+  });
+
+  it('모델 저장만으로 모니터링을 열지 않고 최종 평가가 끝난 뒤에만 연결한다', async () => {
+    let run = structuredClone(DEMO_RUN_DETAIL);
+
+    run.configuration.models = ['xgboost'];
+    run.run.selected_model = null;
+    const app = context(run.run.id);
+
+    mocks.useApp.mockReturnValue(app);
+    mocks.api.run.mockImplementation(async () => structuredClone(run));
+    mocks.api.selectModel.mockImplementation(async () => {
+      run.run.selected_model = 'xgboost';
+      return structuredClone(run);
+    });
+    const user = userEvent.setup();
+
+    mount();
+    await screen.findByText('중간 확인 결과');
+    expect(screen.queryByRole('link', { name: '실시간 모니터링' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '사용할 모델 저장' }));
+    await screen.findByText(/사용할 모델이 저장됐어요/);
+    expect(app.toast).toHaveBeenCalledWith(
+      '사용할 모델을 저장했어요. 최종 평가를 마친 뒤 모니터링에서 사용할 수 있어요.',
+      'success',
+    );
+    expect(screen.queryByRole('link', { name: '실시간 모니터링' })).not.toBeInTheDocument();
+    expect(mocks.api.evaluate).not.toHaveBeenCalled();
+    run = { ...run, run: { ...run.run, evaluation_status: 'completed' } };
+    await user.click(screen.getByRole('button', { name: '학습 결과 새로고침' }));
+    expect(await screen.findByRole('link', { name: '실시간 모니터링' })).toHaveAttribute(
+      'href',
+      '/monitor',
+    );
+  });
+
+  it('XGBoost 또는 AutoEncoder 하나만 자동 설정하고 명시한 학습 클릭에서만 전송한다', async () => {
+    const user = userEvent.setup();
+
+    mount();
+    await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(screen.queryByRole('radio', { name: /LightGBM/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /AutoEncoder/ }));
+    await user.click(screen.getByRole('button', { name: '자동 설정' }));
+    expect(await screen.findByText('210행')).toBeInTheDocument();
+    expect(mocks.prepareTraining).toHaveBeenCalledWith(
+      {
+        dataset_id: DEMO_DATASET_DETAIL.dataset.id,
+        model_key: 'autoencoder',
+        train_ratio: 0.7,
+        validation_ratio: 0.15,
+        feature_columns: DEMO_DATASET_DETAIL.inspection.channels,
+      },
+      expect.any(AbortSignal),
+    );
+    expect(mocks.api.createRun).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '학습 시작' }));
+    await waitFor(() =>
+      expect(mocks.api.createRun).toHaveBeenCalledExactlyOnceWith(
+        plan('autoencoder').configuration,
+      ),
+    );
+    expect(mocks.api.selectModel).not.toHaveBeenCalled();
+    expect(mocks.api.evaluate).not.toHaveBeenCalled();
+  });
+
+  it('Pro는 같은 F1 결과를 한 점수로 보여주고 Pro+로 바꾸면 전문 지표가 보인다', async () => {
+    const run = structuredClone(DEMO_RUN_DETAIL);
+
+    run.configuration.models = ['xgboost'];
+    mocks.useApp.mockReturnValue(context(run.run.id));
+    mocks.api.run.mockResolvedValue(run);
+    const expected = String(
+      learningScore(
+        DEMO_RESULTS.items.find((item) => item.model_key === 'xgboost')!.validation_metrics,
+      ),
+    );
+
+    const user = userEvent.setup();
+
+    mount();
+    await screen.findByText('중간 확인 결과');
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'STRONG' && element.textContent === `${expected} / 100점`,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Recall')).not.toBeInTheDocument();
+    expect(screen.getByText(/고장 확률이나 설비의 건강 점수는 아니에요/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Pro\+$/ }));
+    expect(screen.getByText('Recall')).toBeInTheDocument();
+    expect(screen.getByText('Precision')).toBeInTheDocument();
+    expect(screen.getByText('F1 score')).toBeInTheDocument();
+    expect(screen.queryByText('중간 확인 결과')).not.toBeInTheDocument();
+    expect(localStorage.getItem('kkobugi:expertise')).toBe('pro-plus');
+    expect(mocks.api.selectModel).not.toHaveBeenCalled();
+  });
+
+  it('계산 불가를 0점으로 바꾸지 않는다', async () => {
+    const run = structuredClone(DEMO_RUN_DETAIL);
+
+    const results = structuredClone(DEMO_RESULTS);
+
+    run.configuration.models = ['xgboost'];
+    results.items.find((item) => item.model_key === 'xgboost')!.validation_metrics.f1 = null;
+    mocks.useApp.mockReturnValue(context(run.run.id));
+    mocks.api.run.mockResolvedValue(run);
+    mocks.api.results.mockResolvedValue(results);
+    mount();
+    expect(await screen.findByText('계산할 수 없어요')).toBeInTheDocument();
+    expect(screen.queryByText('/ 100점')).not.toBeInTheDocument();
+  });
+
   it.each([
     {
       timezone: 'naive' as const,
       trainEnd: '2018-04-01T03:29:00',
-      validationEnd: '2018-04-01T04:49:00',
+      validEnd: '2018-04-01T04:49:00',
     },
     {
       timezone: 'aware' as const,
       trainEnd: '2018-04-01T03:29:00+09:00',
-      validationEnd: '2018-04-01T04:49:00+09:00',
+      validEnd: '2018-04-01T04:49:00+09:00',
     },
   ])(
-    '$timezone 경계를 변환하지 않고 catalog 모델·선택 채널과 함께 전송한다',
-    async ({ timezone, trainEnd, validationEnd }) => {
-      const data: DatasetDetail = structuredClone(DEMO_DATASET_DETAIL);
-      data.inspection.timezone_mode = timezone;
-      if (timezone === 'aware') {
-        data.inspection.time_start += '+09:00';
-        data.inspection.time_end += '+09:00';
-      }
-      mocks.api.dataset.mockResolvedValue(data);
-      mocks.api.createRun.mockResolvedValue({
-        ...structuredClone(DEMO_RUN_DETAIL),
-        run: { ...DEMO_RUN_DETAIL.run, status: 'queued', selected_model: null },
-      });
+    '$timezone 수동 시각과 채널을 자동 보정 없이 그대로 전송한다',
+    async ({ timezone, trainEnd, validEnd }) => {
+      localStorage.setItem('kkobugi:expertise', 'pro-plus');
+      const dataset = structuredClone(DEMO_DATASET_DETAIL);
+
+      dataset.inspection.timezone_mode = timezone;
+      mocks.api.dataset.mockResolvedValue(dataset);
       const user = userEvent.setup();
+
       mount();
-      await user.click(screen.getAllByRole('button', { name: '새 학습' })[0]);
-      const drawer = await screen.findByRole('dialog', { name: '새 학습' });
-      await within(drawer).findByText('LightGBM');
-      expect(within(drawer).queryByText('DummyClassifier')).not.toBeInTheDocument();
-      await user.click(within(drawer).getByRole('checkbox', { name: 'sensor_38' }));
-      await user.type(within(drawer).getByLabelText('Train 종료 시각'), trainEnd);
-      await user.type(within(drawer).getByLabelText('Valid 종료 시각'), validationEnd);
-      expect(mocks.api.createRun).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
+      await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
+      await user.click(screen.getByRole('checkbox', { name: 'sensor_38' }));
+      await user.type(screen.getByLabelText('Train 종료 시각'), trainEnd);
+      await user.type(screen.getByLabelText('Valid 종료 시각'), validEnd);
       await user.click(screen.getByRole('button', { name: '학습 시작' }));
-      await waitFor(() => expect(mocks.api.createRun).toHaveBeenCalledTimes(1));
-      expect(mocks.api.createRun).toHaveBeenCalledWith({
-        dataset_id: data.dataset.id,
+      await waitFor(() => expect(mocks.api.createRun).toHaveBeenCalledOnce());
+      expect(mocks.api.createRun.mock.calls[0][0]).toMatchObject({
+        models: ['xgboost'],
         feature_columns: ['sensor_04', 'sensor_10', 'sensor_20'],
-        models: ['xgboost', 'lightgbm', 'autoencoder'],
         train_end: trainEnd,
-        validation_end: validationEnd,
-        ranking_metric: 'f1',
-        random_seed: 42,
+        validation_end: validEnd,
       });
-      expect(mocks.api.selectModel).not.toHaveBeenCalled();
-      expect(mocks.api.evaluate).not.toHaveBeenCalled();
+      expect(mocks.prepareTraining).not.toHaveBeenCalled();
     },
   );
 
-  it('시간 경계가 거꾸로 입력되면 학습 요청을 보내지 않는다', async () => {
-    const user = userEvent.setup();
-    mount();
-    await user.click(screen.getAllByRole('button', { name: '새 학습' })[0]);
-    const drawer = await screen.findByRole('dialog', { name: '새 학습' });
-    await within(drawer).findByText('LightGBM');
-    await user.type(within(drawer).getByLabelText('Train 종료 시각'), '2018-04-01T04:49:00');
-    await user.type(within(drawer).getByLabelText('Valid 종료 시각'), '2018-04-01T03:29:00');
-    await user.click(screen.getByRole('button', { name: '학습 시작' }));
-    expect(
-      await screen.findByText(
-        'Train 종료와 Valid 종료를 올바른 ISO 시각으로, 시간 순서에 맞게 입력해주세요.',
-      ),
-    ).toBeInTheDocument();
-    expect(mocks.api.createRun).not.toHaveBeenCalled();
-  });
+  it('거꾸로 된 경계와 CSV와 다른 시간대는 서버에 보내지 않는다', async () => {
+    localStorage.setItem('kkobugi:expertise', 'pro-plus');
+    const dataset = structuredClone(DEMO_DATASET_DETAIL);
 
-  it('시간대가 있는 CSV에서 시간대 없는 경계를 조용히 보정하지 않는다', async () => {
-    const data = structuredClone(DEMO_DATASET_DETAIL);
-    data.inspection.timezone_mode = 'aware';
-    mocks.api.dataset.mockResolvedValue(data);
+    dataset.inspection.timezone_mode = 'aware';
+    mocks.api.dataset.mockResolvedValue(dataset);
     const user = userEvent.setup();
+
     mount();
-    await user.click(screen.getAllByRole('button', { name: '새 학습' })[0]);
-    const drawer = await screen.findByRole('dialog', { name: '새 학습' });
-    await within(drawer).findByText('LightGBM');
-    await user.type(within(drawer).getByLabelText('Train 종료 시각'), '2018-04-01T03:29:00');
-    await user.type(within(drawer).getByLabelText('Valid 종료 시각'), '2018-04-01T04:49:00');
+    await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
+    await user.click(screen.getByText('채널·시간 경계·모델 옵션 직접 설정'));
+    await user.type(screen.getByLabelText('Train 종료 시각'), '2018-04-01T04:49:00');
+    await user.type(screen.getByLabelText('Valid 종료 시각'), '2018-04-01T03:29:00');
+    await user.click(screen.getByRole('button', { name: '학습 시작' }));
+    expect(await screen.findByText(/Train 종료와 Valid 종료를 올바른 ISO/)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Train 종료 시각'));
+    await user.type(screen.getByLabelText('Train 종료 시각'), '2018-04-01T01:00:00');
     await user.click(screen.getByRole('button', { name: '학습 시작' }));
     expect(await screen.findByText(/두 경계의 시간대 표기를 CSV와 같게/)).toBeInTheDocument();
     expect(mocks.api.createRun).not.toHaveBeenCalled();
   });
 
-  it('Valid 순위로 자동 선택·평가하지 않고, 모델 선택 후 별도 확인에서만 Test를 요청한다', async () => {
-    let serverRun: RunDetail = structuredClone(DEMO_RUN_DETAIL);
-    serverRun.run.selected_model = null;
-    mocks.useApp.mockReturnValue(context(serverRun.run.id));
-    mocks.api.run.mockImplementation(async () => structuredClone(serverRun));
+  it('과거 LightGBM 기록도 보존하고 모델 선택과 Test 요청은 확인 후에만 보낸다', async () => {
+    let run: RunDetail = structuredClone(DEMO_RUN_DETAIL);
+
+    run.run.selected_model = null;
+    mocks.useApp.mockReturnValue(context(run.run.id));
+    mocks.api.run.mockImplementation(async () => structuredClone(run));
     mocks.api.selectModel.mockImplementation(async (_id, key) => {
-      serverRun.run.selected_model = key;
-      return structuredClone(serverRun);
+      run.run.selected_model = key;
+      return structuredClone(run);
     });
     mocks.api.evaluate.mockImplementation(async () => {
-      serverRun.run.evaluation_status = 'completed';
-      return structuredClone(DEMO_EVALUATION);
+      run.run.evaluation_status = 'completed';
+      return { ...structuredClone(DEMO_EVALUATION), model_key: 'lightgbm' };
     });
     const user = userEvent.setup();
+
     mount();
-    await screen.findByText('어떤 모델을 사용할까요?');
+    await screen.findByLabelText('이전 실행의 모델');
+    expect(screen.getByRole('option', { name: 'LightGBM' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('이전 실행의 모델'), 'lightgbm');
     expect(mocks.api.selectModel).not.toHaveBeenCalled();
     expect(mocks.api.evaluate).not.toHaveBeenCalled();
-    expect(mocks.api.evaluation).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '이 모델로 Test 평가' })).toBeDisabled();
-    const xgbRow = screen.getByText('XGBoost', { selector: 'strong' }).closest('tr')!;
-    await user.click(within(xgbRow).getByRole('button', { name: '선택' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: '이 모델로 Test 평가' })).toBeEnabled(),
-    );
-    expect(mocks.api.selectModel).toHaveBeenCalledWith(serverRun.run.id, 'xgboost');
+    await user.click(screen.getByRole('button', { name: '마지막 데이터로 확인' }));
+    const dialog = await screen.findByRole('dialog', { name: '마지막 데이터로 확인할까요?' });
+
     expect(mocks.api.evaluate).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button', { name: '이 모델로 Test 평가' }));
-    const confirmation = await screen.findByRole('dialog', {
-      name: '선택한 모델로 Test를 평가할까요?',
-    });
-    expect(mocks.api.evaluate).not.toHaveBeenCalled();
-    await user.click(within(confirmation).getByRole('button', { name: 'Test 평가 시작' }));
-    await waitFor(() =>
-      expect(mocks.api.evaluate).toHaveBeenCalledExactlyOnceWith(serverRun.run.id),
-    );
+    await user.click(within(dialog).getByRole('button', { name: '최종 확인 시작' }));
+    await waitFor(() => expect(mocks.api.selectModel).toHaveBeenCalledWith(run.run.id, 'lightgbm'));
+    await waitFor(() => expect(mocks.api.evaluate).toHaveBeenCalledExactlyOnceWith(run.run.id));
     expect(
-      await screen.findByText('Test 평가를 시작해서 모델 선택이 잠겼어요.'),
+      await screen.findByText(/최종 평가를 시작한 실행은 모델과 설정을 바꿀 수 없어요/),
     ).toBeInTheDocument();
-    expect(
-      screen
-        .getAllByRole('button', { name: '선택' })
-        .every((button) => button.hasAttribute('disabled')),
-    ).toBe(true);
+  });
+
+  it('모델 변경 뒤 늦게 도착한 자동 설정을 적용하지 않는다', async () => {
+    let resolvePlan: (value: ReturnType<typeof plan>) => void = () => {};
+
+    mocks.prepareTraining.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePlan = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+
+    mount();
+    await waitFor(() => expect(screen.getByRole('button', { name: '자동 설정' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '자동 설정' }));
+    await user.click(screen.getByRole('radio', { name: /AutoEncoder/ }));
+    resolvePlan(plan('xgboost'));
+    await waitFor(() => expect(screen.queryByText('210행')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '학습 시작' })).toBeDisabled();
   });
 });

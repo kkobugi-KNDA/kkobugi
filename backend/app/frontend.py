@@ -8,7 +8,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
 # React Router의 페이지에만 index.html을 돌려준다. 없는 API·파일은 404를 유지한다.
-_PAGE_PATHS = {".", "", "data", "models", "review", "reports", "costs"}
+_PAGE_PATHS = {".", "", "data", "models", "monitor", "review", "reports", "costs"}
 
 
 class FrontendFiles(StaticFiles):

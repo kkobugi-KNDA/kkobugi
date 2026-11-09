@@ -7,6 +7,7 @@ import { observationForDisplay, reviewApi, type SavedObservation } from '../lib/
 import { csvTime, number, percent } from '../lib/format';
 import { DEMO_RESULTS } from '../data/demo';
 import { Badge, EmptyState, Notice, PageHeader } from '../components/ui';
+import GeneratedReports from '../components/GeneratedReports';
 import { judgmentText, observationStorageKey, readObservationDrafts } from './ReviewPage';
 import type { Observation, RunResults } from '../types';
 import './review.css';
@@ -127,11 +128,11 @@ export default function ReportsPage() {
       `데이터 ID: ${dataset.id}`,
       `모드: ${mode === 'demo' ? '화면 미리보기 — 예시 데이터와 지표' : '연결된 계정의 업로드 데이터'}`,
       '',
-      '모델 비교 · Valid',
+      '학습한 모델 · Valid',
       ...(results?.items.map(
         (item) =>
           `${item.display_name}: F1 ${percent(item.validation_metrics.f1)} / Precision ${percent(item.validation_metrics.precision)} / Recall ${percent(item.validation_metrics.recall)} / Accuracy ${percent(item.validation_metrics.accuracy)}`,
-      ) || ['완료된 모델 비교 결과 없음']),
+      ) || ['완료된 학습 결과 없음']),
       '',
       `직접 남긴 관찰 · ${mode === 'live' ? '내 계정에 저장된 서버 기록' : '미리보기 임시 초안'}`,
       ...(included.length
@@ -148,7 +149,7 @@ export default function ReportsPage() {
           )
         : ['관찰 기록 없음']),
       '',
-      '이 문서는 CSV, 모델 비교 결과, 작성자의 관찰을 함께 정리한 기록입니다. 고장 원인이나 정비 필요성을 자동 확정하지 않습니다. 문서 자체는 서버에 저장하지 않았습니다.',
+      '이 문서는 CSV, 학습한 모델의 결과, 작성자의 관찰을 함께 정리한 기록입니다. 고장 원인이나 정비 필요성을 자동 확정하지 않습니다. 문서 자체는 서버에 저장하지 않았습니다.',
     ];
     const url = URL.createObjectURL(
       new Blob(['\uFEFF' + content.join('\n')], { type: 'text/plain;charset=utf-8' }),
@@ -175,11 +176,13 @@ export default function ReportsPage() {
           인쇄 · PDF
         </button>
       </PageHeader>
+      <GeneratedReports />
       <Notice>
         {mode === 'live'
           ? '내 계정에 저장된 관찰을 불러옵니다. 다른 계정과 공유되지 않습니다.'
           : '관찰은 미리보기 임시 초안이며 이 브라우저에만 저장됩니다.'}{' '}
-        RAG 보고서 생성과 문서의 서버 저장은 아직 연결되지 않았어요.
+        AI 안내에서 만든 Word·PDF는 위 목록에 저장돼요. 아래 검토 기록은 현재 데이터의 모델 결과와
+        관찰을 모아 보여줘요.
       </Notice>
       {mode === 'live' && legacy.length > 0 && (
         <Notice>
@@ -267,7 +270,7 @@ export default function ReportsPage() {
               <div className="rv-document-section-number">02</div>
               <div>
                 <h3>
-                  모델 비교 결과 <span>Valid</span>
+                  학습 결과 <span>Valid</span>
                 </h3>
                 {results?.items.length ? (
                   <div className="rv-table-scroll">
@@ -302,7 +305,7 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 ) : (
-                  <p className="rv-document-note">이 데이터에 완료된 모델 비교 결과가 없습니다.</p>
+                  <p className="rv-document-note">이 데이터에 완료된 학습 결과가 없습니다.</p>
                 )}
               </div>
             </section>
@@ -385,7 +388,7 @@ export default function ReportsPage() {
               <FileText size={23} />
               <h3>필요한 부분만 남기세요</h3>
               <p>
-                선택한 데이터의 모델 비교와 관찰이 담깁니다. 비용 가정은 비용 비교에서 따로 확인할
+                선택한 데이터의 모델 결과와 관찰이 담깁니다. 비용 가정은 비용 비교에서 따로 확인할
                 수 있어요.
               </p>
               <Link to="/review" className="button secondary">

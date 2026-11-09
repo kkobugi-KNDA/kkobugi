@@ -20,7 +20,7 @@ RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.12.15-slim-bookworm AS runtime
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends libgomp1 ca-certificates openssh-client gosu \
+    && apt-get install --yes --no-install-recommends libgomp1 ca-certificates openssh-client gosu fonts-nanum \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --shell /bin/bash app \
     && usermod --unlock root \
