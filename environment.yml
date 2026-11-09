@@ -1,0 +1,53 @@
+
+name: kkobugi
+
+channels:
+  - conda-forge
+  - nodefaults
+
+dependencies:
+  # Python
+  - python=3.14
+  - pip
+
+  # Data Analysis
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - pyarrow
+
+  # Machine Learning
+  - py-xgboost
+  - imbalanced-learn
+  - shap
+  - joblib
+
+  # Deep Learning - Autoencoder
+  - pytorch
+
+  # Visualization
+  - matplotlib
+  - seaborn
+  - plotly
+
+  # Notebook
+  - jupyterlab
+  - ipykernel
+
+  # Service / Utilities
+  - streamlit
+  - pydantic
+  - python-dotenv
+  - tqdm
+
+  # LLM / RAG
+  - pip:
+      - openai
+      - langchain
+      - langchain-openai
+      - langchain-community
+      - langchain-text-splitters
+      - langgraph
+      - faiss-cpu
+      - pypdf
