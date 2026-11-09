@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.db import get_db
+from app.memory_work import memory_guard
 from app.models import User
 from app.schemas.errors import ErrorResponse
 from app.schemas.runs import ModelKey
@@ -34,7 +35,10 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @router.get(
-    "/datasets/{dataset_id}/series", response_model=SeriesResponse, summary="구간별 채널 그래프"
+    "/datasets/{dataset_id}/series",
+    response_model=SeriesResponse,
+    summary="구간별 채널 그래프",
+    dependencies=[Depends(memory_guard)],
 )
 def get_series(
     dataset_id: str,
@@ -57,6 +61,7 @@ def get_series(
     "/datasets/{dataset_id}/label-intervals",
     response_model=LabelIntervals,
     summary="CSV 라벨별 연속 관측 구간",
+    dependencies=[Depends(memory_guard)],
 )
 def get_label_intervals(
     dataset_id: str,
@@ -80,6 +85,7 @@ def get_label_intervals(
     "/runs/{run_id}/predictions",
     response_model=PredictionResponse,
     summary="선택 구간의 행별 모델 예측",
+    dependencies=[Depends(memory_guard)],
 )
 def get_predictions(
     run_id: str,
@@ -114,6 +120,7 @@ def get_predictions(
     "/runs/{run_id}/prediction-intervals",
     response_model=PredictionIntervals,
     summary="모델 예측별 연속 관측 구간",
+    dependencies=[Depends(memory_guard)],
 )
 def get_prediction_intervals(
     run_id: str,

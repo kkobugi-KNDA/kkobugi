@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.memory_work import memory_guard
 from app.models import User
 from app.schemas.auth import AuthResponse, LoginRequest, PublicUser
 from app.schemas.errors import ErrorResponse
@@ -42,7 +43,12 @@ def get_current_user(current_session: CurrentSession) -> User:
     return current_session.user
 
 
-@router.post("/login", response_model=AuthResponse, summary="아이디와 비밀번호로 로그인")
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    summary="아이디와 비밀번호로 로그인",
+    dependencies=[Depends(memory_guard)],
+)
 def login(
     credentials: LoginRequest,
     request: Request,

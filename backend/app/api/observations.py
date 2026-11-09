@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.db import get_db
+from app.memory_work import memory_guard
 from app.models import User
 from app.schemas.errors import ErrorResponse
 from app.schemas.observations import (
@@ -31,7 +32,13 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-@router.post("", response_model=ObservationResponse, status_code=201, summary="현장 관찰 저장")
+@router.post(
+    "",
+    response_model=ObservationResponse,
+    status_code=201,
+    summary="현장 관찰 저장",
+    dependencies=[Depends(memory_guard)],
+)
 def create_observation(
     body: ObservationCreate,
     request: Request,
@@ -79,7 +86,12 @@ def get_observation(
     return observation_service.observation_detail(database_session, observation)
 
 
-@router.patch("/{observation_id}", response_model=ObservationResponse, summary="현장 관찰 수정")
+@router.patch(
+    "/{observation_id}",
+    response_model=ObservationResponse,
+    summary="현장 관찰 수정",
+    dependencies=[Depends(memory_guard)],
+)
 def patch_observation(
     observation_id: str,
     body: ObservationPatch,

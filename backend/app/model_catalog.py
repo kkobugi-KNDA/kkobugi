@@ -40,6 +40,7 @@ class NormalOnlyAutoencoder:
         reconstruction_target = normal_scaled.ravel() if self.n_features_in_ == 1 else normal_scaled
 
         self.network_.fit(normal_scaled, reconstruction_target)
+        del reconstruction_target, normal_scaled
         normal_errors = self.decision_function(normal_features)
 
         # Valid/Test를 보면서 기준을 바꾸지 않고 정상 Train의 99분위를 고정한다.
@@ -48,14 +49,19 @@ class NormalOnlyAutoencoder:
         return self
 
     def decision_function(self, features: np.ndarray) -> np.ndarray:
-        scaled_features = self.scaler_.transform(features)
-
-        reconstructed_features = self.network_.predict(scaled_features).reshape(
-            -1, self.n_features_in_
-        )
-
+        if np.ndim(features) < 2 or len(features) == 0:
+            # 빈 입력·차원 오류는 기존 StandardScaler와 같은 검증을 거친다.
+            self.scaler_.transform(features)
         # 점수는 고장 확률이 아니라 스케일된 채널의 평균 제곱 재구성 오차다.
-        return np.mean(np.square(reconstructed_features - scaled_features), axis=1)
+        errors = np.empty(len(features), dtype=float)
+        # 모든 행을 계산하되 스케일·복원·제곱 배열은 4,096행씩만 보관한다.
+        for start in range(0, len(features), 4096):
+            scaled = self.scaler_.transform(features[start : start + 4096])
+            reconstructed = self.network_.predict(scaled).reshape(-1, self.n_features_in_)
+            errors[start : start + len(scaled)] = np.mean(
+                np.square(reconstructed - scaled), axis=1
+            )
+        return errors
 
     def predict(self, features: np.ndarray) -> np.ndarray:
         return (self.decision_function(features) > self.threshold_).astype(int)

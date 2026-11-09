@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db import Database
+from app.memory_work import MemoryWorkGate
 from app.models import Dataset, ModelRun, User
 from app.schemas.runs import (
     EvaluationMetrics,
@@ -191,10 +192,13 @@ def get_evaluation(model_run: ModelRun) -> EvaluationResponse:
 class RunManager:
     """단일 API 프로세스에서 대기열과 모델 선택·평가 경합을 관리한다."""
 
-    def __init__(self, database: Database, settings: Settings):
+    def __init__(
+        self, database: Database, settings: Settings, *, memory_gate: MemoryWorkGate | None = None
+    ):
         self.database = database
 
         self.settings = settings
+        self.memory_gate = memory_gate if memory_gate is not None else MemoryWorkGate()
 
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kkobugi-model")
 
@@ -490,16 +494,17 @@ class RunManager:
                 artifact_directory.mkdir(exist_ok=False)
                 new_artifact_directory = artifact_directory
 
-                training_report = modeling.train_models(
-                    dataset_service.dataset_file_path(dataset, self.settings),
-                    configuration,
-                    normal_label=dataset.normal_label,
-                    abnormal_label=dataset.abnormal_label,
-                    timestamp_column=dataset.timestamp_column,
-                    label_column=dataset.label_column,
-                    expected_sha256=model_run.input_sha256,
-                    artifact_directory=artifact_directory,
-                )
+                with self.memory_gate.sync_slot():
+                    training_report = modeling.train_models(
+                        dataset_service.dataset_file_path(dataset, self.settings),
+                        configuration,
+                        normal_label=dataset.normal_label,
+                        abnormal_label=dataset.abnormal_label,
+                        timestamp_column=dataset.timestamp_column,
+                        label_column=dataset.label_column,
+                        expected_sha256=model_run.input_sha256,
+                        artifact_directory=artifact_directory,
+                    )
 
                 model_run.training_report = training_report
 
@@ -547,18 +552,19 @@ class RunManager:
                 )
 
                 # 모델을 다시 학습하지 않고, 사용자가 고른 저장 모델만 Test에 적용한다.
-                evaluation = modeling.evaluate_model(
-                    dataset_service.dataset_file_path(dataset, self.settings),
-                    configuration,
-                    normal_label=dataset.normal_label,
-                    abnormal_label=dataset.abnormal_label,
-                    timestamp_column=dataset.timestamp_column,
-                    label_column=dataset.label_column,
-                    expected_sha256=model_run.input_sha256,
-                    artifact_directory=self._artifact_directory(run_id),
-                    model_key=model_run.selected_model,
-                    expected_artifact_sha256=selected_result["artifact_sha256"],
-                )
+                with self.memory_gate.sync_slot():
+                    evaluation = modeling.evaluate_model(
+                        dataset_service.dataset_file_path(dataset, self.settings),
+                        configuration,
+                        normal_label=dataset.normal_label,
+                        abnormal_label=dataset.abnormal_label,
+                        timestamp_column=dataset.timestamp_column,
+                        label_column=dataset.label_column,
+                        expected_sha256=model_run.input_sha256,
+                        artifact_directory=self._artifact_directory(run_id),
+                        model_key=model_run.selected_model,
+                        expected_artifact_sha256=selected_result["artifact_sha256"],
+                    )
 
                 model_run.evaluation_report = evaluation.model_dump()
 

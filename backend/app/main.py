@@ -19,12 +19,16 @@ from app.config import Settings
 from app.db import Database
 from app.errors import register_error_handlers
 from app.frontend import FrontendFiles
+from app.memory_work import MemoryWorkGate
 from app.middleware import BrowserSecurityMiddleware, UploadSizeLimitMiddleware
 from app.services.runs import RunManager
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, memory_gate: MemoryWorkGate | None = None
+) -> FastAPI:
     settings = settings if settings is not None else Settings()
+    memory_gate = memory_gate if memory_gate is not None else MemoryWorkGate()
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -38,7 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             # 기존 테이블과 계정은 보존하고, 없는 테이블만 생성한다.
             database.create_tables()
-            run_manager = RunManager(database, settings)
+            run_manager = RunManager(database, settings, memory_gate=memory_gate)
 
             # 완료한 결과는 보존하고, 강제 종료로 남은 실행 상태만 정리한다.
             run_manager.recover_interrupted()
@@ -60,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # 라우터가 같은 설정과 DB를 사용하도록 앱에 보관한다.
     application.state.settings = settings
+    application.state.memory_gate = memory_gate
 
     register_error_handlers(application)
 

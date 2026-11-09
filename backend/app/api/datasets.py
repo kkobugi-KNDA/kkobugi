@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.db import get_db
+from app.memory_work import memory_guard
 from app.models import User
 from app.schemas.datasets import DatasetDetail, DatasetList
 from app.schemas.errors import ErrorResponse
@@ -57,7 +58,7 @@ async def validate_upload_options(request: Request, _current_user: CurrentUser) 
     response_model=DatasetDetail,
     status_code=201,
     summary="전처리된 CSV 등록·검사",
-    dependencies=[Depends(validate_upload_options)],
+    dependencies=[Depends(memory_guard), Depends(validate_upload_options)],
     responses={200: {"model": DatasetDetail, "description": "같은 파일·설정의 기존 자료 재사용"}},
 )
 def upload_dataset(

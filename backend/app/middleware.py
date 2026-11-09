@@ -93,7 +93,7 @@ class BrowserSecurityMiddleware:
 
 
 class UploadSizeLimitMiddleware:
-    """파일을 모두 수신하기 전에도 요청 전체의 크기를 제한한다."""
+    """파일과 JSON을 모두 읽기 전에 실제 수신 바이트 수를 제한한다."""
 
     def __init__(self, app: ASGIApp, max_upload_bytes: int):
         self.app = app
@@ -102,13 +102,20 @@ class UploadSizeLimitMiddleware:
         self.max_request_bytes = max_upload_bytes + 1024 * 1024
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if (
-            scope["type"] != "http"
-            or scope["path"] != "/api/v1/datasets"
-            or scope["method"] != "POST"
-        ):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
             await self.app(scope, receive, send)
             return
+        if scope["method"] not in {"POST", "PUT", "PATCH", "DELETE"}:
+            await self.app(scope, receive, send)
+            return
+
+        is_dataset = scope["path"].rstrip("/") == "/api/v1/datasets"
+        if is_dataset and scope["method"] == "POST":
+            max_request_bytes = self.max_request_bytes
+        elif scope["path"].rstrip("/") == "/api/v1/auth/login":
+            max_request_bytes = 16 * 1024
+        else:
+            max_request_bytes = 1024 * 1024
 
         received_bytes = 0
 
@@ -121,12 +128,12 @@ class UploadSizeLimitMiddleware:
                 received_bytes += len(message.get("body", b""))
 
                 # Content-Length가 없거나 잘못된 값이어도 실제 받은 바이트로 판단한다.
-                if received_bytes > self.max_request_bytes:
+                if received_bytes > max_request_bytes:
                     raise HTTPException(
                         status_code=413,
                         detail={
-                            "code": "DATASET_TOO_LARGE",
-                            "message": "업로드 요청이 허용된 크기를 넘었습니다.",
+                            "code": "DATASET_TOO_LARGE" if is_dataset else "REQUEST_TOO_LARGE",
+                            "message": "요청 내용이 허용된 크기를 넘었습니다.",
                         },
                     )
 

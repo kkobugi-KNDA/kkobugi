@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.db import get_db
+from app.memory_work import memory_guard
 from app.models import User
 from app.schemas.errors import ErrorResponse
 from app.schemas.observations import Judgment
@@ -34,7 +35,13 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-@router.post("", response_model=ReviewResponse, status_code=201, summary="검토 기록 생성")
+@router.post(
+    "",
+    response_model=ReviewResponse,
+    status_code=201,
+    summary="검토 기록 생성",
+    dependencies=[Depends(memory_guard)],
+)
 def create_review(
     body: ReviewCreate,
     request: Request,
@@ -84,7 +91,12 @@ def get_review(
     return review_service.review_detail(database_session, review)
 
 
-@router.patch("/{review_id}", response_model=ReviewResponse, summary="진행 중인 검토 수정")
+@router.patch(
+    "/{review_id}",
+    response_model=ReviewResponse,
+    summary="진행 중인 검토 수정",
+    dependencies=[Depends(memory_guard)],
+)
 def patch_review(
     review_id: str,
     body: ReviewPatch,
@@ -98,7 +110,12 @@ def patch_review(
     )
 
 
-@router.post("/{review_id}/complete", response_model=ReviewResponse, summary="검토 완료 처리")
+@router.post(
+    "/{review_id}/complete",
+    response_model=ReviewResponse,
+    summary="검토 완료 처리",
+    dependencies=[Depends(memory_guard)],
+)
 def complete_review(
     review_id: str,
     body: ReviewRevision,
