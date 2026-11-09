@@ -53,9 +53,9 @@ const MonitorPage = lazy(() => import('./pages/MonitorPage'));
 const NAV = [
   { to: '/', label: '작업실', icon: LayoutDashboard },
   { to: '/data', label: '데이터', icon: Database },
-  { to: '/models', label: '모델 학습', icon: FlaskConical },
+  { to: '/models', label: '모델 학습 선택', icon: FlaskConical },
   { to: '/monitor', label: '실시간 모니터링', icon: Radio },
-  { to: '/review', label: '구간 확인', icon: ChartNoAxesCombined },
+  { to: '/review', label: '시뮬레이션 보고서', icon: ChartNoAxesCombined },
   { to: '/reports', label: '보고서', icon: FileText },
   { to: '/costs', label: '비용 비교', icon: Coins },
 ];
