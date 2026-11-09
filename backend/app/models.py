@@ -200,3 +200,69 @@ class ObservationHistory(Base):
     changed_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
 
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class Review(Base):
+    """검토 상태와 당시 확인한 근거를 원본·관찰 기록과 분리해 저장한다."""
+
+    __tablename__ = "reviews"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
+
+    # 목록의 실행 필터에 사용하며, 저장한 모델 근거의 실행 ID와 함께 갱신한다.
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("model_runs.id"), index=True)
+
+    channel: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    start_time: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    end_time: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    conclusion: Mapped[str] = mapped_column(String(5000), default="", nullable=False)
+
+    judgment: Mapped[str] = mapped_column(String(32), default="needs_check", nullable=False)
+
+    status: Mapped[str] = mapped_column(String(24), default="in_progress", nullable=False)
+
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # 최신 관찰을 자동으로 읽지 않고 검토할 때 선택한 버전의 전체 내용을 보존한다.
+    evidence: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    last_editor_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    completed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    completed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+    created_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    updated_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+
+class ReviewHistory(Base):
+    """작성·수정·완료·재검토 당시의 전체 기록을 같은 트랜잭션에서 남긴다."""
+
+    __tablename__ = "review_history"
+
+    __table_args__ = (UniqueConstraint("review_id", "revision", name="uq_review_history_revision"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    review_id: Mapped[str] = mapped_column(ForeignKey("reviews.id"), index=True)
+
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+
+    reason: Mapped[str] = mapped_column(String(1000), default="", nullable=False)
+
+    changed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    changed_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)

@@ -12,6 +12,7 @@ from app.api.datasets import router as datasets_router
 from app.api.health import router as health_router
 from app.api.models import router as models_router
 from app.api.observations import router as observations_router
+from app.api.reviews import router as reviews_router
 from app.api.runs import router as runs_router
 from app.api.series import router as series_router
 from app.config import Settings
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(runs_router)
     application.include_router(series_router)
     application.include_router(observations_router)
+    application.include_router(reviews_router)
     return application
 
 

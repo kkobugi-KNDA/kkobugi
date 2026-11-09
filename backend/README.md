@@ -54,6 +54,9 @@ uv run python -m app.cli create-user --username minho --display-name 박민호
 구간 그래프·원본 라벨·예측 구간은 조회 API로 연결한다. 현장 관찰은 원본과 분리해 DB에 저장하고,
 수정 번호와 이력을 남긴다. 전체 주소와 요청 형식은 [API.md](API.md)에 정리했다.
 
+검토는 `/api/v1/reviews`에서 저장하고 완료한다. 모델 결과와 관찰의 확인한 버전을 근거로 남긴다.
+완료 후에는 다시 열어야 수정할 수 있고, 모든 변경은 수정 이력에 보관한다.
+
 다른 worktree에서 같은 로컬 자료를 사용할 때는 `.env`의 `KKOBUGI_DATABASE_PATH`,
 `KKOBUGI_DATASET_STORAGE_PATH`, `KKOBUGI_MODEL_STORAGE_PATH`를 기존 저장소의 절대 경로로 맞춘다.
 DB만 옮기고 CSV·모델 폴더를 빼면 기록에 연결된 파일을 읽을 수 없다. `.env`와 실제 자료는 커밋하지 않는다.
