@@ -15,6 +15,8 @@ import { ReportPreview } from './AxAssistantPanel';
 import './chat-conversation.css';
 
 export interface ChatConversationProps {
+  datasetId?: string | null;
+  datasetName?: string;
   runId?: string | null;
   modelKey?: string | null;
   split?: 'validation' | 'test';
@@ -44,6 +46,8 @@ const costFields: { key: keyof AssistantCostInput; label: string }[] = [
 ];
 
 export default function ChatConversation({
+  datasetId = null,
+  datasetName,
   runId = null,
   modelKey = null,
   split = 'validation',
@@ -117,7 +121,7 @@ export default function ChatConversation({
       reportControllers.current.clear();
     };
     // 추천 질문만 바뀌거나 같은 문맥을 다시 열 때 작성 중인 질문과 대화를 덮어쓰지 않는다.
-  }, [user?.id, mode, runId, modelKey, split, contextKey]);
+  }, [user?.id, mode, datasetId, runId, modelKey, split, contextKey]);
 
   useEffect(() => {
     const suggested = JSON.parse(suggestedCostsKey) as AssistantCostInput;
@@ -130,7 +134,7 @@ export default function ChatConversation({
         ]),
       ),
     );
-  }, [suggestedCostsKey, user?.id, mode, runId, modelKey, split, contextKey]);
+  }, [suggestedCostsKey, user?.id, mode, datasetId, runId, modelKey, split, contextKey]);
 
   useEffect(() => {
     const transcript = transcriptRef.current;
@@ -271,6 +275,7 @@ export default function ChatConversation({
         {
           question: text,
           history: recentChatHistory(messages.map(({ role, content }) => ({ role, content }))),
+          ...(datasetId ? { dataset_id: datasetId } : {}),
           ...(runId && modelKey ? { run_id: runId, model_key: modelKey, split } : {}),
           ...(requestObservation ? { observation: requestObservation } : {}),
           ...(Object.keys(costs).length ? { cost_inputs: costs } : {}),
@@ -317,6 +322,17 @@ export default function ChatConversation({
 
   return (
     <div className="chat-conversation">
+      <div className="chat-dataset-context" aria-label="포석호가 참조하는 데이터">
+        <FileText size={15} aria-hidden="true" />
+        <span>
+          {datasetId
+            ? `참조 CSV: ${datasetName || '선택한 CSV'}`
+            : runId
+              ? '참조: 선택한 실행의 학습 CSV'
+              : '참조 CSV 없음 · 데이터 화면에서 파일을 선택해주세요.'}
+        </span>
+        {datasetId && !runId && <small>CSV 검사 정보 기준</small>}
+      </div>
       <div
         ref={transcriptRef}
         className="chat-transcript"

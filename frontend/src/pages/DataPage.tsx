@@ -9,6 +9,8 @@ import {
   Layers3,
   RefreshCw,
   Search,
+  Trash2,
+  Undo2,
   Upload,
   X,
 } from 'lucide-react';
@@ -27,7 +29,7 @@ import { useApp } from '../context/AppContext';
 import { DEMO_DATASET_DETAIL } from '../data/demo';
 import { api, errorMessage } from '../lib/api';
 import { bytes, csvTime, dateTime, number } from '../lib/format';
-import type { DatasetDetail } from '../types';
+import type { DatasetDetail, DatasetSummary } from '../types';
 import './data-models.css';
 
 export default function DataPage() {
@@ -38,8 +40,30 @@ export default function DataPage() {
     selectedDatasetId,
     setSelectedDatasetId,
     refreshDatasets,
+    registerDataset,
+    deleteDataset,
+    restoreDataset,
     toast,
   } = useApp();
+
+  const [deleteTarget, setDeleteTarget] = useState<DatasetSummary | null>(null);
+
+  const [deleting, setDeleting] = useState(false);
+
+  const [deleteError, setDeleteError] = useState('');
+
+  const [lastDeleted, setLastDeleted] = useState<DatasetSummary | null>(null);
+
+  const [trashOpen, setTrashOpen] = useState(false);
+
+  const [deletedDatasets, setDeletedDatasets] = useState<DatasetSummary[]>([]);
+
+  const [trashLoading, setTrashLoading] = useState(false);
+
+  const [trashError, setTrashError] = useState('');
+
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
   const [detail, setDetail] = useState<DatasetDetail | null>(null),
     [loading, setLoading] = useState(false),
     [error, setError] = useState('');
@@ -57,6 +81,28 @@ export default function DataPage() {
   const fileInput = useRef<HTMLInputElement>(null),
     uploadController = useRef<AbortController | null>(null);
   useEffect(() => () => uploadController.current?.abort(), []);
+
+  useEffect(() => {
+    if (!trashOpen || mode === 'demo') return;
+
+    const controller = new AbortController();
+
+    setTrashLoading(true);
+    setTrashError('');
+    api
+      .deletedDatasets(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setDeletedDatasets(result.items);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setTrashError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTrashLoading(false);
+      });
+    return () => controller.abort();
+  }, [trashOpen, mode]);
+
   useEffect(() => {
     if (!selectedDatasetId && datasets.length) setSelectedDatasetId(datasets[0].id);
   }, [datasets, selectedDatasetId, setSelectedDatasetId]);
@@ -87,6 +133,45 @@ export default function DataPage() {
       });
     return () => controller.abort();
   }, [selectedDatasetId, mode]);
+
+  async function confirmDelete() {
+    if (!deleteTarget || mode === 'demo') return;
+
+    const target = deleteTarget;
+
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteDataset(target.id);
+      setLastDeleted(target);
+      setDetail((current) => (current?.dataset.id === target.id ? null : current));
+      setColumnsOpen(false);
+      setDeleteTarget(null);
+      toast('CSV를 목록에서 삭제했어요. 삭제한 CSV에서 복원할 수 있어요.', 'success');
+    } catch (failure) {
+      setDeleteError(errorMessage(failure));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function restore(target: DatasetSummary) {
+    if (mode === 'demo') return;
+    setRestoringId(target.id);
+    setTrashError('');
+    try {
+      await restoreDataset(target.id);
+      setDeletedDatasets((current) => current.filter((dataset) => dataset.id !== target.id));
+      setLastDeleted((current) => (current?.id === target.id ? null : current));
+      toast(`${target.filename}를 복원했어요.`, 'success');
+    } catch (failure) {
+      setTrashError(errorMessage(failure));
+      toast(errorMessage(failure), 'error');
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
   function chooseFile(next: File | null) {
     setUploadError('');
     if (next && !next.name.toLowerCase().endsWith('.csv')) {
@@ -133,7 +218,9 @@ export default function DataPage() {
     form.append('abnormal_label', abnormalLabel);
     try {
       const result = await api.upload(form, controller.signal);
-      setSelectedDatasetId(result.dataset.id);
+
+      if (controller.signal.aborted) return;
+      registerDataset(result.dataset);
       setDetail(result);
       setUploadOpen(false);
       setFile(null);
@@ -161,6 +248,13 @@ export default function DataPage() {
         description="전처리한 CSV를 등록하고, 학습 전에 입력 상태를 확인해요."
       >
         <button
+          className="button ghost"
+          onClick={() => setTrashOpen(true)}
+          disabled={mode === 'demo'}
+        >
+          <Trash2 size={16} /> 삭제한 CSV
+        </button>
+        <button
           className="button secondary"
           onClick={() => refreshDatasets().catch((e) => toast(errorMessage(e), 'error'))}
           disabled={datasetsLoading}
@@ -172,6 +266,22 @@ export default function DataPage() {
           <Upload size={17} /> CSV 등록
         </button>
       </PageHeader>
+      {lastDeleted && (
+        <Notice>
+          <div className="dm-delete-notice">
+            <span>
+              <strong>{lastDeleted.filename}</strong>를 목록에서 삭제했어요.
+            </span>
+            <button
+              className="button ghost"
+              onClick={() => restore(lastDeleted)}
+              disabled={restoringId !== null}
+            >
+              <Undo2 size={15} /> {restoringId === lastDeleted.id ? '복원 중' : '삭제 취소'}
+            </button>
+          </div>
+        </Notice>
+      )}
       {mode === 'demo' && (
         <Notice>
           화면 미리보기예요. 아래 CSV와 검사 값은 예시이며, 실제 파일은 로그인한 계정으로 등록해요.
@@ -256,9 +366,23 @@ export default function DataPage() {
                       </p>
                     </div>
                   </div>
-                  <Badge tone={detail.dataset.status === 'valid' ? 'green' : 'amber'}>
-                    {detail.dataset.status === 'valid' ? '입력 검사 통과' : '입력 확인 필요'}
-                  </Badge>
+                  <div className="dm-detail-actions">
+                    <Badge tone={detail.dataset.status === 'valid' ? 'green' : 'amber'}>
+                      {detail.dataset.status === 'valid' ? '입력 검사 통과' : '입력 확인 필요'}
+                    </Badge>
+                    <button
+                      className="icon-button"
+                      aria-label={`${detail.dataset.filename} 삭제`}
+                      title="CSV 삭제"
+                      disabled={mode === 'demo'}
+                      onClick={() => {
+                        setDeleteTarget(detail.dataset);
+                        setDeleteError('');
+                      }}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
                 <div className="dm-stat-row">
                   <div>
@@ -465,6 +589,67 @@ export default function DataPage() {
           )}
         </div>
       </div>
+      <Modal
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+        title="CSV를 삭제할까요?"
+        description={deleteTarget?.filename}
+        footer={
+          <>
+            <button
+              className="button secondary"
+              disabled={deleting}
+              onClick={() => setDeleteTarget(null)}
+            >
+              취소
+            </button>
+            <button className="button primary" disabled={deleting} onClick={confirmDelete}>
+              <Trash2 size={16} /> {deleting ? '삭제 중' : '목록에서 삭제'}
+            </button>
+          </>
+        }
+      >
+        <p>학습할 CSV 목록에서 제외해요. 원본 파일과 기존 학습·판단·점검 기록은 보존해요.</p>
+        <p>
+          나중에 <strong>삭제한 CSV</strong>에서 복원할 수 있어요.
+        </p>
+        {deleteError && <Notice tone="error">{deleteError}</Notice>}
+      </Modal>
+      <Modal
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        title="삭제한 CSV"
+        description="보관된 CSV를 복원하면 다시 학습 목록에서 선택할 수 있어요."
+      >
+        {trashError && <Notice tone="error">{trashError}</Notice>}
+        {trashLoading ? (
+          <Skeleton className="dm-block-skeleton" />
+        ) : deletedDatasets.length ? (
+          <div className="dm-form-stack">
+            {deletedDatasets.map((dataset) => (
+              <div className="dm-deleted-row" key={dataset.id}>
+                <FileSpreadsheet size={20} />
+                <div>
+                  <strong>{dataset.filename}</strong>
+                  <small>{number(dataset.row_count)}행</small>
+                </div>
+                <button
+                  className="button secondary"
+                  onClick={() => restore(dataset)}
+                  disabled={restoringId !== null}
+                  aria-label={`${dataset.filename} 복원`}
+                >
+                  <Undo2 size={16} /> {restoringId === dataset.id ? '복원 중' : '복원'}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          !trashError && <EmptyState title="삭제한 CSV가 없어요" />
+        )}
+      </Modal>
       <Modal
         open={uploadOpen}
         onOpenChange={(open) => {

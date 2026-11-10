@@ -69,6 +69,12 @@ export const api = {
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   datasets: (signal?: AbortSignal) =>
     request<Paginated<DatasetSummary>>('/datasets?limit=100', { signal }),
+  deletedDatasets: (signal?: AbortSignal) =>
+    request<Paginated<DatasetSummary>>('/datasets?limit=100&deleted=true', { signal }),
+  deleteDataset: (id: string) =>
+    request<void>(`/datasets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  restoreDataset: (id: string) =>
+    request<DatasetDetail>(`/datasets/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
   dataset: (id: string, signal?: AbortSignal) =>
     request<DatasetDetail>(`/datasets/${encodeURIComponent(id)}`, { signal }),
   reinspectDataset: (id: string, signal?: AbortSignal) =>

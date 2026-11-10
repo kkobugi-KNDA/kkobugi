@@ -8,12 +8,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Dataset, User
+from app.models import Dataset, DatasetDeletion, User
 from app.schemas.datasets import CsvInspection, DatasetDetail, DatasetList, DatasetSummary
 from app.services.csv_inspection import inspect_csv
 
@@ -155,6 +155,7 @@ def upload_dataset(
 
         if existing_dataset is not None:
             dataset_file_path(existing_dataset, settings)
+            restore_dataset(database_session, existing_dataset.id, current_user.id)
             return existing_dataset, False
 
         # 검사는 읽기만 수행한다. 결측·정렬·라벨 값을 여기서 고치지 않는다.
@@ -211,6 +212,7 @@ def upload_dataset(
             if existing_dataset is None:
                 raise _storage_unavailable() from None
             dataset_file_path(existing_dataset, settings)
+            restore_dataset(database_session, existing_dataset.id, current_user.id)
             return existing_dataset, False
 
         # DB 저장이 끝난 파일은 아래 정리 과정에서 지우지 않는다.
@@ -242,6 +244,55 @@ def get_dataset(database_session: Session, dataset_id: str, owner_id: int) -> Da
     if dataset is None:
         raise _dataset_not_found()
     return dataset
+
+
+def require_active_dataset(database_session: Session, dataset_id: str, owner_id: int) -> Dataset:
+    """새 학습과 현재 CSV 질문에는 휴지통 자료를 사용하지 않는다."""
+    dataset = get_dataset(database_session, dataset_id, owner_id)
+
+    try:
+        deletion = database_session.get(DatasetDeletion, dataset.id)
+
+    except SQLAlchemyError:
+        raise _storage_unavailable() from None
+    if deletion is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DATASET_DELETED", "message": "휴지통의 CSV를 먼저 복원해 주세요."},
+        )
+    return dataset
+
+
+def delete_dataset(database_session: Session, dataset_id: str, owner_id: int) -> None:
+    """복원 가능한 목록 삭제. 파일·학습·현장 관찰·검토 기록은 삭제하지 않는다."""
+    dataset = get_dataset(database_session, dataset_id, owner_id)
+
+    try:
+        if database_session.get(DatasetDeletion, dataset.id) is None:
+            database_session.add(DatasetDeletion(dataset_id=dataset.id))
+            database_session.commit()
+    except IntegrityError:
+        database_session.rollback()
+        # 같은 CSV를 동시에 삭제한 경우도 이미 완료된 요청으로 취급한다.
+        if database_session.get(DatasetDeletion, dataset.id) is None:
+            raise _storage_unavailable() from None
+    except SQLAlchemyError:
+        database_session.rollback()
+        raise _storage_unavailable() from None
+
+
+def restore_dataset(database_session: Session, dataset_id: str, owner_id: int) -> DatasetDetail:
+    dataset = get_dataset(database_session, dataset_id, owner_id)
+
+    try:
+        database_session.execute(
+            delete(DatasetDeletion).where(DatasetDeletion.dataset_id == dataset.id)
+        )
+        database_session.commit()
+    except SQLAlchemyError:
+        database_session.rollback()
+        raise _storage_unavailable() from None
+    return dataset_detail(dataset)
 
 
 def _source_hash(file_path: Path) -> str:
@@ -319,15 +370,23 @@ def dataset_detail(dataset: Dataset) -> DatasetDetail:
     return DatasetDetail(dataset=_dataset_summary(dataset, inspection), inspection=inspection)
 
 
-def list_datasets(database_session: Session, owner_id: int, limit: int, offset: int) -> DatasetList:
+def list_datasets(
+    database_session: Session, owner_id: int, limit: int, offset: int, *, deleted: bool = False
+) -> DatasetList:
+    deletion_exists = (
+        select(DatasetDeletion.dataset_id).where(DatasetDeletion.dataset_id == Dataset.id).exists()
+    )
+
+    conditions = (Dataset.owner_id == owner_id, deletion_exists if deleted else ~deletion_exists)
+
     try:
         total = database_session.scalar(
-            select(func.count()).select_from(Dataset).where(Dataset.owner_id == owner_id)
+            select(func.count()).select_from(Dataset).where(*conditions)
         )
 
         datasets = database_session.scalars(
             select(Dataset)
-            .where(Dataset.owner_id == owner_id)
+            .where(*conditions)
             .order_by(Dataset.created_at.desc(), Dataset.id.desc())
             .limit(limit)
             .offset(offset)

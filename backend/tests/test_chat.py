@@ -6,7 +6,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 from test_assistant_reports import ready_model as ready_model
-from test_runs import WRITE_HEADERS, login_user
+from test_runs import WRITE_HEADERS, login_user, upload_dataset
 from test_runs import run_client as run_client
 from test_runs import run_password_hash as run_password_hash
 
@@ -207,6 +207,93 @@ def test_model_context_keeps_existing_report_format_without_costs(ready_model):
     )
 
     assert report.status_code == 202, report.text
+
+
+def test_selected_dataset_uses_server_inspection_without_old_model(run_client, monkeypatch):
+    uploaded = run_client.post(
+        "/api/v1/datasets",
+        files={
+            "file": (
+                "new-cal.csv",
+                b"timestamp,TC-Z4,label\n2026-01-01T00:00:00,,unknown\n",
+                "text/csv",
+            )
+        },
+        headers=WRITE_HEADERS,
+    ).json()
+
+    calls = provider(
+        monkeypatch, run_client, {"answer": "새 CSV 검사를 확인했어요.", "citation_ids": []}
+    )
+
+    response = send_chat(
+        run_client,
+        "지금 올라온 데이터셋 확인 가능?",
+        dataset_id=uploaded["dataset"]["id"],
+        history=[{"role": "assistant", "content": "이전 펌프 데이터는 220,320행이에요."}],
+    )
+
+    assert response.status_code == 201, response.text
+    facts = json.loads(calls[0]["json"]["messages"][0]["content"].split("\n", 1)[1])
+
+    assert facts["dataset"]["filename"] == "new-cal.csv"
+    assert facts["dataset"]["row_count"] == 1
+    assert facts["dataset"]["status"] == "needs_review"
+    assert facts["dataset"]["missing_counts"]["TC-Z4"] == 1
+    assert facts["dataset"]["invalid_label_count"] == 1
+    assert facts["model"] is None
+    assert "이전 대화의 다른 파일" in calls[0]["json"]["system"]
+    assert response.json()["report_message_id"] is None
+
+
+def test_other_account_selected_dataset_rejected_before_ai(run_client, monkeypatch):
+    dataset_id = upload_dataset(run_client)
+
+    calls = []
+
+    monkeypatch.setattr("app.services.chat._llm_answer", lambda *args: calls.append(args))
+    login_user(run_client, "bob")
+    response = send_chat(run_client, dataset_id=dataset_id)
+
+    assert response.status_code == 404
+    assert calls == []
+
+
+def test_selected_dataset_cannot_be_mixed_with_another_model(ready_model, monkeypatch):
+    client, run_id = ready_model
+
+    other_id = upload_dataset(client, b"timestamp,sensor_00,label\n2026-01-01,1,normal\n")
+
+    calls = []
+
+    monkeypatch.setattr("app.services.chat._llm_answer", lambda *args: calls.append(args))
+    response = send_chat(client, dataset_id=other_id, run_id=run_id, model_key="xgboost")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "DATASET_CONTEXT_MISMATCH"
+    assert calls == []
+
+
+def test_archived_dataset_rejects_new_context_but_keeps_historical_model(ready_model, monkeypatch):
+    client, run_id = ready_model
+
+    dataset_id = client.get(f"/api/v1/runs/{run_id}").json()["run"]["dataset_id"]
+
+    assert client.delete(f"/api/v1/datasets/{dataset_id}", headers=WRITE_HEADERS).status_code == 204
+    response = send_chat(client, dataset_id=dataset_id)
+
+    assert response.status_code == 409
+    calls = provider(
+        monkeypatch, client, {"answer": "기존 학습 결과를 확인했어요.", "citation_ids": []}
+    )
+
+    historical = send_chat(client, dataset_id=dataset_id, run_id=run_id, model_key="xgboost")
+
+    assert historical.status_code == 201, historical.text
+    facts = json.loads(calls[0]["json"]["messages"][0]["content"].split("\n", 1)[1])
+
+    assert facts["dataset"]["id"] == dataset_id
+    assert facts["model"]["run_id"] == run_id
 
 
 def test_other_account_model_context_is_rejected_before_provider_or_storage(

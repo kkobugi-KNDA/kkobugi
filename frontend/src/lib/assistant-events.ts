@@ -6,6 +6,8 @@ export const ASSISTANT_OPEN_EVENT = 'kkobugi:assistant-open';
 export const SIMULATION_STATUS_EVENT = 'kkobugi:simulation-status';
 
 export interface AssistantOpenDetail {
+  datasetId?: string | null;
+  datasetName?: string;
   runId?: string | null;
   modelKey?: string | null;
   split?: 'validation' | 'test';

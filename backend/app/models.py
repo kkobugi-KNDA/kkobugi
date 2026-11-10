@@ -106,6 +106,17 @@ class Dataset(Base):
     inspection: Mapped[dict] = mapped_column(JSON, nullable=False)
 
 
+class DatasetDeletion(Base):
+    """목록에서 제거한 CSV 표시만 저장하고 원본과 기존 학습·검토 참조는 보존한다."""
+
+    __tablename__ = "dataset_deletions"
+
+    # 새 테이블만 추가하므로 기존 datasets 테이블이나 저장값을 바꾸지 않는다.
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), primary_key=True)
+
+    deleted_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+
 class ModelRun(Base):
     """학습과 최종 평가 상태를 분리해 저장한다. Test 결과로 모델을 다시 고르지 않는다."""
 

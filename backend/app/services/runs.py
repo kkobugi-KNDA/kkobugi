@@ -285,7 +285,7 @@ class RunManager:
             )
         with self._lock:
             try:
-                dataset = dataset_service.get_dataset(
+                dataset = dataset_service.require_active_dataset(
                     database_session, request.dataset_id, current_user.id
                 )
 

@@ -72,6 +72,42 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('포석호의 대화형 점검 도우미', () => {
+  it('새 CSV로 바꾸면 이전 답변과 진행 중 요청을 분리하고 새 ID만 전송한다', async () => {
+    const view = render(chat({ datasetId: 'old-csv', datasetName: 'old.csv' }));
+
+    await send('기존 CSV 확인해줘');
+    expect(mocks.sendChat.mock.calls[0][0]).toHaveProperty('dataset_id', 'old-csv');
+    view.rerender(chat({ datasetId: 'new-csv', datasetName: 'cal01_base_v7.csv' }));
+    expect(screen.queryByText('기존 CSV 확인해줘')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('포석호가 참조하는 데이터')).toHaveTextContent(
+      'cal01_base_v7.csv',
+    );
+    await send('새로 올린 파일 확인해줘');
+    expect(mocks.sendChat.mock.calls[1][0]).toMatchObject({ dataset_id: 'new-csv', history: [] });
+    expect(mocks.sendChat.mock.calls[1][0]).not.toHaveProperty('run_id');
+  });
+
+  it('CSV 변경 뒤 늦게 도착한 이전 파일 답변을 표시하지 않는다', async () => {
+    let resolveOld: (value: ChatReply) => void = () => {};
+
+    mocks.sendChat.mockReturnValueOnce(
+      new Promise<ChatReply>((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const view = render(chat({ datasetId: 'old-csv' }));
+
+    await send('확인해줘');
+    const signal = mocks.sendChat.mock.calls[0][1] as AbortSignal;
+
+    view.rerender(chat({ datasetId: 'new-csv' }));
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      resolveOld(reply('late', '이전 CSV 답변'));
+    });
+    expect(screen.queryByText('이전 CSV 답변')).not.toBeInTheDocument();
+  });
+
   it('모델과 견적을 전혀 입력하지 않아도 질문만으로 대화한다', async () => {
     render(chat());
     const button = screen.getByRole('button', { name: '메시지 보내기' });

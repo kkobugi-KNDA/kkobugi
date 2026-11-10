@@ -47,6 +47,8 @@ class ChatRequest(BaseModel):
 
     history: list[ChatTurn] = Field(default_factory=list, max_length=20)
 
+    dataset_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+
     run_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
     model_key: ModelKey | None = None

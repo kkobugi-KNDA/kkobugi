@@ -41,6 +41,7 @@ import AssistantPet from './components/AssistantPet';
 import ChatConversation from './components/ChatConversation';
 import PetChatModal from './components/PetChatModal';
 import { ASSISTANT_OPEN_EVENT, type AssistantOpenDetail } from './lib/assistant-events';
+import { resolveAssistantContext } from './lib/assistant-context';
 import { useSimulationAssistant } from './lib/use-simulation-assistant';
 import type { SimulationChatContext } from './lib/chat-api';
 import ExpertiseToggle from './components/ExpertiseToggle';
@@ -102,32 +103,34 @@ function Assistant({
   detail: AssistantOpenDetail;
   getSimulationContext: () => SimulationChatContext | null;
 }) {
-  const { runs, selectedRunId } = useApp();
+  const { runs, selectedRunId, datasets, selectedDatasetId } = useApp();
 
-  const selectedRun = runs.find((run) => run.id === selectedRunId && run.status === 'completed');
+  const location = useLocation();
+
+  const context = resolveAssistantContext(detail, {
+    pathname: location.pathname,
+    datasets,
+    selectedDatasetId,
+    runs,
+    selectedRunId,
+  });
 
   return (
     <PetChatModal open={open} onOpenChange={onOpenChange}>
       <ChatConversation
-        runId={
-          detail.runId === undefined
-            ? selectedRun?.selected_model
-              ? selectedRun.id
-              : null
-            : detail.runId
+        datasetId={context.datasetId}
+        datasetName={context.datasetName}
+        runId={context.runId}
+        modelKey={context.modelKey}
+        split={context.split}
+        selectedSignal={context.selectedSignal}
+        suggestedCostInputs={context.suggestedCostInputs}
+        contextKey={context.contextKey}
+        initialQuestion={context.initialQuestion}
+        simulationContext={context.simulationContext}
+        getSimulationContext={
+          location.pathname === '/simulation' ? getSimulationContext : undefined
         }
-        modelKey={
-          detail.modelKey === undefined ? selectedRun?.selected_model || null : detail.modelKey
-        }
-        split={
-          detail.split || (selectedRun?.evaluation_status === 'completed' ? 'test' : 'validation')
-        }
-        selectedSignal={detail.selectedSignal}
-        suggestedCostInputs={detail.suggestedCostInputs}
-        contextKey={detail.contextKey}
-        initialQuestion={detail.initialQuestion}
-        simulationContext={detail.simulationContext}
-        getSimulationContext={getSimulationContext}
       />
     </PetChatModal>
   );
@@ -159,7 +162,7 @@ export function assistantDetailForPet(
 function Shell() {
   const { isExpert } = useExpertise();
 
-  const { user, mode, logout, toast, runs } = useApp(),
+  const { user, mode, logout, toast, runs, selectedDatasetId } = useApp(),
     location = useLocation(),
     navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(
@@ -196,8 +199,13 @@ function Shell() {
     setAssistantDetail({});
   }, [user?.id, mode]);
 
+  // 화면이나 선택 CSV가 바뀌면 전에 열었던 실행·부품 문맥을 가져오지 않는다.
+  useEffect(() => {
+    setAssistantDetail({});
+  }, [location.pathname, selectedDatasetId]);
+
   function openFromPet() {
-    const currentStatus = latestStatus.current;
+    const currentStatus = location.pathname === '/simulation' ? latestStatus.current : null;
 
     setAssistantDetail((previous) => assistantDetailForPet(previous, currentStatus));
     dismissNotice();

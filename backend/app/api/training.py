@@ -23,6 +23,8 @@ def training_plan(
     database_session: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> TrainingPlanResponse:
-    dataset = dataset_service.get_dataset(database_session, body.dataset_id, current_user.id)
+    dataset = dataset_service.require_active_dataset(
+        database_session, body.dataset_id, current_user.id
+    )
 
     return make_training_plan(dataset, request.app.state.settings, body)

@@ -4,6 +4,49 @@
   gap: 22px;
   align-items: start;
 }
+
+.dm-detail-actions,
+.dm-delete-notice,
+.dm-deleted-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dm-detail-actions {
+  flex-shrink: 0;
+}
+
+.dm-delete-notice {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.dm-delete-notice strong,
+.dm-deleted-row strong {
+  overflow-wrap: anywhere;
+}
+
+.dm-deleted-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--theme-border, #dce3eb);
+}
+
+.dm-deleted-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.dm-deleted-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--theme-text-muted, #8391a3);
+}
+
+.dm-deleted-row > svg,
+.dm-deleted-row > button {
+  flex-shrink: 0;
+}
 .dm-file-panel {
   position: sticky;
   top: 22px;
