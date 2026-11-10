@@ -564,7 +564,7 @@ export default function ReviewPage() {
         </section>
       ) : (
         <>
-          <section className="surface rv-source-bar">
+          <section className="surface rv-source-bar" data-tour="review-source">
             <Field label="데이터" htmlFor="review-dataset">
               <select
                 id="review-dataset"
@@ -611,7 +611,7 @@ export default function ReviewPage() {
             selection={selection}
             onChange={setPredictionOverlay}
           />
-          <section className="surface rv-chart-surface">
+          <section className="surface rv-chart-surface" data-tour="review-chart">
             <div className="section-heading">
               <div>
                 <h2>채널 흐름</h2>
@@ -704,7 +704,7 @@ export default function ReviewPage() {
               관찰 남기기
             </button>
           </section>
-          <section className="surface rv-drafts">
+          <section className="surface rv-drafts" data-tour="review-observations">
             <div className="section-heading">
               <div>
                 <h2>

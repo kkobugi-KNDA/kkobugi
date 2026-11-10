@@ -161,7 +161,7 @@ export default function ReportsPage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <div className="page-stack rv-page">
+    <div className="page-stack rv-page" data-tour="reports-page">
       <PageHeader
         eyebrow="REVIEW NOTES"
         title="검토 기록"
@@ -171,7 +171,12 @@ export default function ReportsPage() {
           <Download size={16} />
           텍스트 저장
         </button>
-        <button className="button primary" disabled={!canExport} onClick={() => window.print()}>
+        <button
+          className="button primary"
+          data-tour="reports-export"
+          disabled={!canExport}
+          onClick={() => window.print()}
+        >
           <Printer size={16} />
           인쇄 · PDF
         </button>

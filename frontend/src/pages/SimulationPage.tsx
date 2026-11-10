@@ -483,7 +483,11 @@ export default function SimulationPage() {
       </div>
       {error && <Notice tone="error">{error}</Notice>}
       {listError && <Notice tone="error">{listError}</Notice>}
-      <div className="simulation-panel-toolbar" aria-label="시뮬레이션 패널">
+      <div
+        className="simulation-panel-toolbar"
+        data-tour="simulation-toolbar"
+        aria-label="시뮬레이션 패널"
+      >
         <button
           ref={controlsToggleRef}
           aria-controls="simulation-controls"
@@ -526,6 +530,7 @@ export default function SimulationPage() {
       </div>
       <div
         ref={workspaceRef}
+        data-tour="simulation-workspace"
         className={`simulation-workspace ${hasSignal ? 'has-signal' : ''} ${showParts ? 'has-part-panel' : ''} ${controlsOpen ? '' : 'controls-collapsed'}`}
       >
         <Suspense
@@ -752,7 +757,7 @@ export default function SimulationPage() {
             </p>
           </aside>
         )}
-        <div className="simulation-live-status" role="status">
+        <div className="simulation-live-status" data-tour="simulation-status" role="status">
           <span className={playing ? 'is-playing' : ''} />
           {playing
             ? '수신 중'

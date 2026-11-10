@@ -367,7 +367,11 @@ export default function DataPage() {
           <RefreshCw size={16} className={datasetsLoading ? 'dm-spin' : ''} />
           <span>새로고침</span>
         </button>
-        <button className="button primary" onClick={() => setUploadOpen(true)}>
+        <button
+          className="button primary"
+          data-tour="data-upload"
+          onClick={() => setUploadOpen(true)}
+        >
           <Upload size={17} /> CSV 등록
         </button>
       </PageHeader>
@@ -393,7 +397,7 @@ export default function DataPage() {
         </Notice>
       )}
       <div className="dm-data-layout">
-        <section className="surface dm-file-panel" aria-label="등록한 CSV">
+        <section className="surface dm-file-panel" data-tour="data-files" aria-label="등록한 CSV">
           <div className="dm-panel-title">
             <h2>
               등록한 CSV <span>{number(datasets.length)}</span>
@@ -448,7 +452,7 @@ export default function DataPage() {
             <span className="dm-dot" /> CSV 원본을 그대로 보관해요
           </div>
         </section>
-        <div className="dm-detail-stack">
+        <div className="dm-detail-stack" data-tour="data-detail">
           {error && <Notice tone="error">{error}</Notice>}
           {loading ? (
             <section className="surface dm-detail-card">

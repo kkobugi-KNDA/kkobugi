@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import App, { assistantDetailForPet } from './App';
@@ -11,6 +11,14 @@ vi.mock('./lib/api', () => ({
 }));
 vi.mock('./components/AssistantPet', () => ({
   default: ({ onOpen }: { onOpen: () => void }) => <button onClick={onOpen}>도우미 열기</button>,
+}));
+vi.mock('./components/GuestGuide', () => ({
+  default: ({ open, onClose }: { open: boolean; onClose: () => void }) =>
+    open ? (
+      <section aria-label="열린 게스트 가이드">
+        <button onClick={onClose}>가이드 종료</button>
+      </section>
+    ) : null,
 }));
 vi.mock('./components/LoginVideo', () => ({
   default: () => <div aria-label="로그인 펌프 영상" />,
@@ -39,6 +47,39 @@ beforeEach(() => {
   });
 });
 describe('workspace navigation and authentication boundaries', () => {
+  it('게스트만 상단과 메뉴별 가이드로 들어가며 메뉴 안내는 해당 화면으로 이동한다', async () => {
+    mocks.me.mockResolvedValue({
+      user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+    });
+
+    render(
+      <MemoryRouter>
+        <App />
+        <CurrentPath />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /^가이드 모드$/ }));
+    expect(screen.getByLabelText('열린 게스트 가이드')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '가이드 종료' }));
+    expect(screen.queryByLabelText('열린 게스트 가이드')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^시뮬레이션 가이드 시작$/ }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/simulation'),
+    );
+    expect(screen.getByLabelText('열린 게스트 가이드')).toBeInTheDocument();
+  });
+
+  it('기존 미리보기에는 게스트 전용 가이드를 강제로 표시하지 않는다', async () => {
+    sessionStorage.setItem('kkobugi:preview', '1');
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('link', { name: '작업실' });
+    expect(screen.queryByRole('button', { name: /^가이드 모드$/ })).not.toBeInTheDocument();
+  });
+
   it('이미 게스트로 로그인했어도 QR을 다시 열면 로그인 화면에서 입장을 기다린다', async () => {
     mocks.me.mockResolvedValue({
       user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },

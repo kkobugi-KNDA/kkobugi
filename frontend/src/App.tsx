@@ -38,6 +38,7 @@ import { AppProvider, useApp, type ToastMessage } from './context/AppContext';
 import LoginPage, { Brand } from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AssistantPet from './components/AssistantPet';
+import GuestGuide from './components/GuestGuide';
 import ChatConversation from './components/ChatConversation';
 import PetChatModal from './components/PetChatModal';
 import { ASSISTANT_OPEN_EVENT, type AssistantOpenDetail } from './lib/assistant-events';
@@ -174,6 +175,39 @@ function Shell() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [assistantDetail, setAssistantDetail] = useState<AssistantOpenDetail>({});
 
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  const [pendingGuidePath, setPendingGuidePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pendingGuidePath === location.pathname && user?.is_guest) {
+      setGuideOpen(true);
+      setPendingGuidePath(null);
+    }
+  }, [pendingGuidePath, location.pathname, user?.is_guest]);
+
+  function openGuestGuide(path = location.pathname) {
+    setAssistantOpen(false);
+    setHelpOpen(false);
+    setMobileOpen(false);
+    // 다른 메뉴의 안내는 경로 전환이 끝난 뒤 열어 이전 메뉴 설명이 잠깐 나타나지 않게 한다.
+    if (path !== location.pathname) {
+      setPendingGuidePath(path);
+      navigate(path);
+    } else {
+      setPendingGuidePath(null);
+      setGuideOpen(true);
+    }
+  }
+
+  function closeGuestGuide() {
+    setGuideOpen(false);
+    // 메뉴에서 시작했더라도 모바일에서 숨겨지지 않는 상단 버튼으로 돌아간다.
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLButtonElement>('.guest-guide-trigger')?.focus(),
+    );
+  }
+
   const { latestStatus, notice, dismissNotice } = useSimulationAssistant(
     location.pathname === '/simulation',
     user?.id,
@@ -197,6 +231,8 @@ function Shell() {
   useEffect(() => {
     setAssistantOpen(false);
     setAssistantDetail({});
+    setGuideOpen(false);
+    setPendingGuidePath(null);
   }, [user?.id, mode]);
 
   // 화면이나 선택 CSV가 바뀌면 전에 열었던 실행·부품 문맥을 가져오지 않는다.
@@ -278,32 +314,44 @@ function Shell() {
           <div className="nav-caption">WORKSPACE</div>
           <nav aria-label="주 메뉴">
             {NAV.map(({ to, label, icon: Icon }) => (
-              <Tooltip.Root key={to}>
-                <Tooltip.Trigger asChild>
-                  <NavLink
-                    to={to}
-                    end={to === '/'}
-                    className={`nav-item ${location.pathname === to ? 'active' : ''}`}
-                    aria-label={label}
+              <div key={to} className={user?.is_guest ? 'guest-nav-row' : undefined}>
+                <Tooltip.Root>
+                  <Tooltip.Trigger asChild>
+                    <NavLink
+                      to={to}
+                      end={to === '/'}
+                      className={`nav-item ${location.pathname === to ? 'active' : ''}`}
+                      aria-label={label}
+                    >
+                      <Icon size={20} strokeWidth={1.7} />
+                      {!compact && (
+                        <>
+                          <span>{label}</span>
+                          <ChevronRight className="nav-chevron" size={14} />
+                        </>
+                      )}
+                    </NavLink>
+                  </Tooltip.Trigger>
+                  {compact && (
+                    <Tooltip.Portal>
+                      <Tooltip.Content className="tooltip" side="right" sideOffset={10}>
+                        {label}
+                        <Tooltip.Arrow />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  )}
+                </Tooltip.Root>
+                {user?.is_guest && !compact && (
+                  <button
+                    className="guest-nav-guide"
+                    aria-label={`${label} 가이드 시작`}
+                    title={`${label} 가이드`}
+                    onClick={() => openGuestGuide(to)}
                   >
-                    <Icon size={20} strokeWidth={1.7} />
-                    {!compact && (
-                      <>
-                        <span>{label}</span>
-                        <ChevronRight className="nav-chevron" size={14} />
-                      </>
-                    )}
-                  </NavLink>
-                </Tooltip.Trigger>
-                {compact && (
-                  <Tooltip.Portal>
-                    <Tooltip.Content className="tooltip" side="right" sideOffset={10}>
-                      {label}
-                      <Tooltip.Arrow />
-                    </Tooltip.Content>
-                  </Tooltip.Portal>
+                    <CircleHelp size={17} />
+                  </button>
                 )}
-              </Tooltip.Root>
+              </div>
             ))}
           </nav>
           <div className="sidebar-bottom">
@@ -350,8 +398,19 @@ function Shell() {
               <strong>{current.label}</strong>
             </div>
             <div className="topbar-actions">
+              {user?.is_guest && (
+                <button
+                  className="guest-guide-trigger"
+                  onClick={() => openGuestGuide()}
+                  aria-haspopup="dialog"
+                >
+                  <BookOpen size={17} /> 가이드 모드
+                </button>
+              )}
               <ThemeToggle />
-              <ExpertiseToggle />
+              <div data-tour="expertise">
+                <ExpertiseToggle />
+              </div>
               {mode === 'demo' && (
                 <Badge tone="amber">
                   {user?.is_guest ? '게스트 · 관람 전용' : '미리보기 · 예시 데이터'}
@@ -420,7 +479,7 @@ function Shell() {
               <span>
                 <span className="preview-led" />
                 {user?.is_guest
-                  ? '게스트로 접속했어요. 예시 데이터로 시뮬레이션을 체험하며 팀의 기록은 변경하지 않아요.'
+                  ? '처음이라면 위의 가이드 모드를 눌러보세요. 예시 데이터로 체험하며 팀의 기록은 변경하지 않아요.'
                   : '화면 구성과 동작을 확인하는 미리보기입니다. 데이터와 학습 지표는 예시예요.'}
               </span>
               <button onClick={signout}>
@@ -458,6 +517,7 @@ function Shell() {
           detail={assistantDetail}
           getSimulationContext={getSimulationContext}
         />
+        {user?.is_guest && <GuestGuide open={guideOpen} onClose={closeGuestGuide} />}
         <Drawer
           open={helpOpen}
           onOpenChange={setHelpOpen}
