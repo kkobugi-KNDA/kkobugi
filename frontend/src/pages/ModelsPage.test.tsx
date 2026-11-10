@@ -88,7 +88,7 @@ beforeEach(() => {
 });
 
 describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
-  it('학습 시작 전 CSV 선택 변경을 포석호가 쓰는 공유 선택에도 반영한다', async () => {
+  it('학습 시작 전 CSV 선택 변경을 포부기가 쓰는 공유 선택에도 반영한다', async () => {
     const workspace = context();
 
     workspace.datasets.push({ ...DEMO_DATASET_DETAIL.dataset, id: 'new-csv', filename: 'new.csv' });
@@ -121,7 +121,7 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
       const guide = await screen.findByRole('complementary', { name: '학습 전에 함께 확인해요' });
 
       expect(guide).toHaveTextContent('최종 확인 구간에 이상 기록이 0행이에요.');
-      await user.click(within(guide).getByRole('button', { name: '포석호에게 물어보기' }));
+      await user.click(within(guide).getByRole('button', { name: '포부기에게 물어보기' }));
       expect(receive).toHaveBeenCalledOnce();
       expect(receive.mock.calls[0][0].detail).toMatchObject({
         runId: null,
@@ -722,7 +722,7 @@ describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
       try {
         const guide = screen.getByRole('complementary', { name: '결과를 함께 읽어볼까요?' });
 
-        fireEvent.click(within(guide).getByRole('button', { name: '포석호에게 물어보기' }));
+        fireEvent.click(within(guide).getByRole('button', { name: '포부기에게 물어보기' }));
         expect(receive.mock.calls[0][0].detail).toMatchObject({
           runId: run.run.id,
           modelKey: 'xgboost',

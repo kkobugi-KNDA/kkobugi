@@ -1,5 +1,6 @@
 """수동 시간 분할로 모델을 비교하고 선택된 모델의 Test를 별도로 평가한다."""
 
+import csv
 import hashlib
 import json
 import platform
@@ -29,6 +30,7 @@ from app.schemas.runs import (
     SplitInfo,
     SplitPart,
 )
+from app.services.csv_format import detect_csv_delimiter
 
 
 def _file_sha256(file_path: Path) -> str:
@@ -90,8 +92,12 @@ def _read_dataset(
         raise ValueError("시각·정답 라벨은 학습 특징에 포함할 수 없습니다.")
 
     try:
+        with file_path.open("r", encoding="utf-8-sig", newline="") as stream:
+            delimiter = detect_csv_delimiter(stream)
+
         data_frame = pd.read_csv(
             file_path,
+            sep=delimiter,
             encoding="utf-8-sig",
             usecols=[timestamp_column, label_column, *config.feature_columns],
             dtype={timestamp_column: str, label_column: str},
@@ -128,7 +134,7 @@ def _read_dataset(
 
         if encoded_labels.isna().any():
             raise ValueError("CSV에 지정한 정상·이상 라벨 외의 값이 있습니다.")
-    except (KeyError, OverflowError, pd.errors.ParserError, UnicodeDecodeError):
+    except (KeyError, OverflowError, csv.Error, pd.errors.ParserError, UnicodeDecodeError):
         raise ValueError("선택한 CSV 컬럼·시각·숫자·라벨 형식을 확인하세요.") from None
 
     train_end_row = bisect_right(timestamps, config.train_end)

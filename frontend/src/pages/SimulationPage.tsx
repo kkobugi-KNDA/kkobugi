@@ -1,6 +1,16 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChartLine, FileUp, LoaderCircle, Pause, Play, RotateCcw, Settings2 } from 'lucide-react';
+import {
+  Box,
+  ChartLine,
+  FileUp,
+  LoaderCircle,
+  Pause,
+  Play,
+  RotateCcw,
+  Settings2,
+  X,
+} from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useExpertise } from '../context/ExpertiseContext';
 import { errorMessage } from '../lib/api';
@@ -25,6 +35,12 @@ import { DEMO_RUN_DETAIL } from '../data/demo';
 import { guestSimulationBatch, guestSimulationManifest } from '../lib/guest-simulation';
 
 const PumpSimulationScene = lazy(() => import('../components/PumpSimulationScene'));
+
+const COMPACT_LAYOUT = '(max-width: 900px), (max-width: 1100px) and (max-height: 500px)';
+
+function compactLayout() {
+  return typeof window.matchMedia === 'function' && window.matchMedia(COMPACT_LAYOUT).matches;
+}
 
 interface PartInputs {
   expectedHours: string;
@@ -83,6 +99,16 @@ export default function SimulationPage() {
 
   const [showParts, setShowParts] = useState(false);
 
+  const [compact, setCompact] = useState(compactLayout);
+
+  const [controlsOpen, setControlsOpen] = useState(() => !compactLayout());
+
+  const controlsToggleRef = useRef<HTMLButtonElement>(null);
+
+  const partsToggleRef = useRef<HTMLButtonElement>(null);
+
+  const graphToggleRef = useRef<HTMLButtonElement>(null);
+
   const [viewMode, setViewMode] = useState<'pump' | 'parts'>('pump');
 
   const [pendingSignal, setPendingSignal] = useState(false);
@@ -129,6 +155,21 @@ export default function SimulationPage() {
   const latestPoint = points.at(-1);
 
   const hasSignal = pendingSignal || latestPoint?.predicted_code === 1;
+
+  // 회전·창 크기 변경은 배치 재생 상태를 바꾸지 않고 패널 배치에만 반영한다.
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+
+    const media = window.matchMedia(COMPACT_LAYOUT);
+
+    const updateLayout = () => {
+      setCompact(media.matches);
+      if (media.matches) setControlsOpen(false);
+    };
+
+    media.addEventListener('change', updateLayout);
+    return () => media.removeEventListener('change', updateLayout);
+  }, []);
 
   // 형상 카드에서 현재 검토하는 부품의 입력·안내 창까지 실제 화면 위치로 선을 잇는다.
   useEffect(() => {
@@ -442,9 +483,50 @@ export default function SimulationPage() {
       </div>
       {error && <Notice tone="error">{error}</Notice>}
       {listError && <Notice tone="error">{listError}</Notice>}
+      <div className="simulation-panel-toolbar" aria-label="시뮬레이션 패널">
+        <button
+          ref={controlsToggleRef}
+          aria-controls="simulation-controls"
+          aria-expanded={controlsOpen}
+          onClick={() => setControlsOpen((open) => !open)}
+        >
+          <Settings2 size={18} /> 재생 설정
+        </button>
+        <button
+          ref={partsToggleRef}
+          aria-controls="simulation-parts-panel"
+          aria-expanded={showParts}
+          onClick={() => setShowParts((open) => !open)}
+        >
+          <Box size={18} /> 부품
+        </button>
+        <button
+          ref={graphToggleRef}
+          aria-controls="simulation-graph-panel"
+          aria-expanded={showGraph}
+          onClick={() => setShowGraph((open) => !open)}
+        >
+          <ChartLine size={18} /> 그래프
+        </button>
+        {!controlsOpen && (
+          <button
+            className="simulation-quick-play"
+            aria-label={playing ? '시뮬레이션 일시 정지' : '실시간 시뮬레이션 시작'}
+            disabled={
+              !simulation ||
+              !channel ||
+              (mode !== 'live' && !isGuest) ||
+              cursor >= (simulation?.total_rows || 0)
+            }
+            onClick={() => setPlaying((previous) => !previous)}
+          >
+            {playing ? <Pause size={18} /> : <Play size={18} />} {playing ? '정지' : '재생'}
+          </button>
+        )}
+      </div>
       <div
         ref={workspaceRef}
-        className={`simulation-workspace ${hasSignal ? 'has-signal' : ''} ${showParts ? 'has-part-panel' : ''}`}
+        className={`simulation-workspace ${hasSignal ? 'has-signal' : ''} ${showParts ? 'has-part-panel' : ''} ${controlsOpen ? '' : 'controls-collapsed'}`}
       >
         <Suspense
           fallback={
@@ -462,197 +544,214 @@ export default function SimulationPage() {
               setShowParts(true);
             }}
             onPartHover={(id) => {
-              if (id) {
+              if (id && !compact) {
                 setSelectedPartId(id);
                 setShowParts(true);
               }
             }}
           />
         </Suspense>
-        <aside className="simulation-controls" aria-label="시뮬레이션 옵션">
-          <h2>
-            <Settings2 size={17} /> 재생 설정
-          </h2>
-          <div className="simulation-view-tabs" role="group" aria-label="3D 표시 대상">
-            <button aria-pressed={viewMode === 'pump'} onClick={() => setViewMode('pump')}>
-              설비
-            </button>
-            <button aria-pressed={viewMode === 'parts'} onClick={() => setViewMode('parts')}>
-              부품 전체
-            </button>
-          </div>
-          <label>
-            사용할 모델
-            <select
-              aria-label="시뮬레이션 모델"
-              value={runId}
-              disabled={uploading}
-              onChange={(event) => setRunId(event.target.value)}
-            >
-              <option value="">학습된 모델 선택</option>
-              {eligibleRuns.map((run) => (
-                <option key={run.id} value={run.id}>
-                  {run.selected_model === 'xgboost' ? 'XGBoost' : 'AutoEncoder'} ·{' '}
-                  {datasets.find((dataset) => dataset.id === run.dataset_id)?.filename ||
-                    run.id.slice(0, 8)}
-                  {isGuest ? ' · 예시' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="simulation-text-button"
-            disabled={isGuest}
-            onClick={() => {
-              void refreshRuns().catch((failure) => setError(errorMessage(failure)));
-            }}
+        {controlsOpen && (
+          <aside
+            id="simulation-controls"
+            className="simulation-controls"
+            aria-label="시뮬레이션 옵션"
           >
-            학습 목록 새로고침
-          </button>
-          {!eligibleRuns.length && (
-            <p>
-              모델 학습과 최종 확인을 마쳐주세요. <Link to="/models">모델 학습 선택 ↗</Link>
-            </p>
-          )}
-          <label className="simulation-file">
-            <FileUp size={21} />
-            <strong>시뮬레이션 CSV 선택</strong>
-            <span>
-              {isGuest
-                ? '예시 CSV가 연결되어 있어요'
-                : file?.name || '한 달 데이터 · timestamp + 학습 채널'}
-            </span>
-            <input
-              aria-label="시뮬레이션 CSV 업로드"
-              type="file"
-              accept=".csv,text/csv"
-              disabled={uploading || mode !== 'live' || isGuest}
-              onChange={(event) => {
-                setFile(event.target.files?.[0] || null);
-                setError('');
-              }}
-            />
-          </label>
-          <button
-            className="simulation-connect"
-            disabled={!file || !chosenRun || uploading || mode !== 'live' || isGuest}
-            onClick={() => void connectFile()}
-          >
-            {uploading ? (
-              <>
-                <LoaderCircle size={16} className="spin" /> CSV 검사 중
-              </>
-            ) : (
-              'CSV 연결'
-            )}
-          </button>
-          <label>
-            저장한 CSV
-            <select
-              aria-label="저장한 시뮬레이션 CSV"
-              value={simulation?.id || ''}
-              disabled={uploading}
-              onChange={(event) => chooseSimulation(event.target.value)}
-            >
-              <option value="">연결한 파일 선택</option>
-              {simulations
-                .filter((item) => item.run_id === runId)
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.filename} · {item.total_rows.toLocaleString()}행
-                  </option>
-                ))}
-            </select>
-          </label>
-          {simulation && (
-            <p className="simulation-range">
-              {simulation.start_time.replace('T', ' ')}
-              <br />~ {simulation.end_time.replace('T', ' ')}
-              <br />
-              {simulation.total_rows.toLocaleString()}행 · {simulation.feature_columns.length}채널
-            </p>
-          )}
-          <button
-            className="simulation-start"
-            disabled={
-              !simulation ||
-              !channel ||
-              (mode !== 'live' && !isGuest) ||
-              cursor >= (simulation?.total_rows || 0)
-            }
-            onClick={() => setPlaying((previous) => !previous)}
-          >
-            {playing ? (
-              <>
-                <Pause size={17} /> 시뮬레이션 일시 정지
-              </>
-            ) : (
-              <>
-                <Play size={17} /> 실시간 시뮬레이션 시작
-              </>
-            )}
-          </button>
-          <div className="simulation-play-options">
-            <button
-              aria-label="시뮬레이션 처음부터"
-              title="처음부터"
-              disabled={!simulation}
-              onClick={resetPlayback}
-            >
-              <RotateCcw size={17} />
-            </button>
-            <select
-              aria-label="시뮬레이션 재생 속도"
-              value={speed}
-              onChange={(event) => setSpeed(Number(event.target.value))}
-            >
-              {[1, 10, 60, 300, 1000].map((value) => (
-                <option key={value} value={value}>
-                  {value.toLocaleString()}행/초
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="simulation-toggle">
-            <ChartLine size={17} />
-            <span>그래프 표시</span>
-            <input
-              aria-label="그래프 표시"
-              type="checkbox"
-              checked={showGraph}
-              onChange={(event) => setShowGraph(event.target.checked)}
-            />
-          </label>
-          {showGraph && (
-            <label>
-              표시할 채널
-              <select
-                aria-label="시뮬레이션 그래프 채널"
-                value={channel}
-                onChange={(event) => {
-                  batchController.current?.abort();
-                  setPoints([]);
-                  setChannel(event.target.value);
+            <div className="simulation-panel-heading">
+              <h2>
+                <Settings2 size={17} /> 재생 설정
+              </h2>
+              <button
+                aria-label="재생 설정 접기"
+                onClick={() => {
+                  setControlsOpen(false);
+                  controlsToggleRef.current?.focus();
                 }}
               >
-                {simulation?.feature_columns.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
+                <X size={18} />
+              </button>
+            </div>
+            <div className="simulation-view-tabs" role="group" aria-label="3D 표시 대상">
+              <button aria-pressed={viewMode === 'pump'} onClick={() => setViewMode('pump')}>
+                설비
+              </button>
+              <button aria-pressed={viewMode === 'parts'} onClick={() => setViewMode('parts')}>
+                부품 전체
+              </button>
+            </div>
+            <label>
+              사용할 모델
+              <select
+                aria-label="시뮬레이션 모델"
+                value={runId}
+                disabled={uploading}
+                onChange={(event) => setRunId(event.target.value)}
+              >
+                <option value="">학습된 모델 선택</option>
+                {eligibleRuns.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {run.selected_model === 'xgboost' ? 'XGBoost' : 'AutoEncoder'} ·{' '}
+                    {datasets.find((dataset) => dataset.id === run.dataset_id)?.filename ||
+                      run.id.slice(0, 8)}
+                    {isGuest ? ' · 예시' : ''}
                   </option>
                 ))}
               </select>
             </label>
-          )}
-          <button
-            className="simulation-text-button"
-            onClick={() => setShowParts((previous) => !previous)}
-          >
-            {showParts ? '부품 설정 닫기' : '부품 수명·견적 입력'}
-          </button>
-          <p className="simulation-footnote">
-            생성 CSV 재생입니다. 학습과 원본 데이터는 변경하지 않습니다.
-          </p>
-        </aside>
+            <button
+              className="simulation-text-button"
+              disabled={isGuest}
+              onClick={() => {
+                void refreshRuns().catch((failure) => setError(errorMessage(failure)));
+              }}
+            >
+              학습 목록 새로고침
+            </button>
+            {!eligibleRuns.length && (
+              <p>
+                모델 학습과 최종 확인을 마쳐주세요. <Link to="/models">모델 학습 선택 ↗</Link>
+              </p>
+            )}
+            <label className="simulation-file">
+              <FileUp size={21} />
+              <strong>시뮬레이션 CSV 선택</strong>
+              <span>
+                {isGuest
+                  ? '예시 CSV가 연결되어 있어요'
+                  : file?.name || '한 달 데이터 · timestamp + 학습 채널'}
+              </span>
+              <input
+                aria-label="시뮬레이션 CSV 업로드"
+                type="file"
+                accept=".csv,text/csv"
+                disabled={uploading || mode !== 'live' || isGuest}
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] || null);
+                  setError('');
+                }}
+              />
+            </label>
+            <button
+              className="simulation-connect"
+              disabled={!file || !chosenRun || uploading || mode !== 'live' || isGuest}
+              onClick={() => void connectFile()}
+            >
+              {uploading ? (
+                <>
+                  <LoaderCircle size={16} className="spin" /> CSV 검사 중
+                </>
+              ) : (
+                'CSV 연결'
+              )}
+            </button>
+            <label>
+              저장한 CSV
+              <select
+                aria-label="저장한 시뮬레이션 CSV"
+                value={simulation?.id || ''}
+                disabled={uploading}
+                onChange={(event) => chooseSimulation(event.target.value)}
+              >
+                <option value="">연결한 파일 선택</option>
+                {simulations
+                  .filter((item) => item.run_id === runId)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.filename} · {item.total_rows.toLocaleString()}행
+                    </option>
+                  ))}
+              </select>
+            </label>
+            {simulation && (
+              <p className="simulation-range">
+                {simulation.start_time.replace('T', ' ')}
+                <br />~ {simulation.end_time.replace('T', ' ')}
+                <br />
+                {simulation.total_rows.toLocaleString()}행 · {simulation.feature_columns.length}채널
+              </p>
+            )}
+            <button
+              className="simulation-start"
+              disabled={
+                !simulation ||
+                !channel ||
+                (mode !== 'live' && !isGuest) ||
+                cursor >= (simulation?.total_rows || 0)
+              }
+              onClick={() => setPlaying((previous) => !previous)}
+            >
+              {playing ? (
+                <>
+                  <Pause size={17} /> 시뮬레이션 일시 정지
+                </>
+              ) : (
+                <>
+                  <Play size={17} /> 실시간 시뮬레이션 시작
+                </>
+              )}
+            </button>
+            <div className="simulation-play-options">
+              <button
+                aria-label="시뮬레이션 처음부터"
+                title="처음부터"
+                disabled={!simulation}
+                onClick={resetPlayback}
+              >
+                <RotateCcw size={17} />
+              </button>
+              <select
+                aria-label="시뮬레이션 재생 속도"
+                value={speed}
+                onChange={(event) => setSpeed(Number(event.target.value))}
+              >
+                {[1, 10, 60, 300, 1000].map((value) => (
+                  <option key={value} value={value}>
+                    {value.toLocaleString()}행/초
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="simulation-toggle">
+              <ChartLine size={17} />
+              <span>그래프 표시</span>
+              <input
+                aria-label="그래프 표시"
+                type="checkbox"
+                checked={showGraph}
+                onChange={(event) => setShowGraph(event.target.checked)}
+              />
+            </label>
+            {showGraph && (
+              <label>
+                표시할 채널
+                <select
+                  aria-label="시뮬레이션 그래프 채널"
+                  value={channel}
+                  onChange={(event) => {
+                    batchController.current?.abort();
+                    setPoints([]);
+                    setChannel(event.target.value);
+                  }}
+                >
+                  {simulation?.feature_columns.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              className="simulation-text-button"
+              onClick={() => setShowParts((previous) => !previous)}
+            >
+              {showParts ? '부품 설정 닫기' : '부품 수명·견적 입력'}
+            </button>
+            <p className="simulation-footnote">
+              생성 CSV 재생입니다. 학습과 원본 데이터는 변경하지 않습니다.
+            </p>
+          </aside>
+        )}
         <div className="simulation-live-status" role="status">
           <span className={playing ? 'is-playing' : ''} />
           {playing
@@ -679,8 +778,24 @@ export default function SimulationPage() {
           </svg>
         )}
         {showParts && (
-          <aside ref={partPanelRef} className="simulation-part-panel" aria-label="부품 수명과 견적">
-            <h2>부품 확인</h2>
+          <aside
+            id="simulation-parts-panel"
+            ref={partPanelRef}
+            className="simulation-part-panel"
+            aria-label="부품 수명과 견적"
+          >
+            <div className="simulation-panel-heading">
+              <h2>부품 확인</h2>
+              <button
+                aria-label="부품 설정 접기"
+                onClick={() => {
+                  setShowParts(false);
+                  partsToggleRef.current?.focus();
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
             <div className="simulation-part-tabs">
               {SIMULATION_PARTS.map((part) => (
                 <button
@@ -760,7 +875,11 @@ export default function SimulationPage() {
           </aside>
         )}
         {showGraph && (
-          <section className="simulation-graph" aria-label="시뮬레이션 그래프">
+          <section
+            id="simulation-graph-panel"
+            className="simulation-graph"
+            aria-label="시뮬레이션 그래프"
+          >
             <header>
               <strong>{channel || '채널 미선택'}</strong>
               <span>
@@ -770,8 +889,25 @@ export default function SimulationPage() {
                     ? '49개 채널의 모델 판정 · 원인 채널 아님'
                     : '여러 채널을 함께 확인한 점검 신호'}
               </span>
+              <button
+                className="simulation-panel-close"
+                aria-label="그래프 접기"
+                onClick={() => {
+                  setShowGraph(false);
+                  graphToggleRef.current?.focus();
+                }}
+              >
+                <X size={18} />
+              </button>
             </header>
-            <LiveChart points={points} channel={channel || '채널'} />
+            <div
+              className="simulation-graph-chart"
+              tabIndex={0}
+              role="group"
+              aria-label="그래프 좌우 탐색"
+            >
+              <LiveChart points={points} channel={channel || '채널'} />
+            </div>
           </section>
         )}
       </div>

@@ -78,14 +78,14 @@ export default function PetChatModal({ open, onOpenChange, children }: Props) {
           <MessageCircle size={23} />
         </div>
         <div>
-          <h2 id="pet-chat-title">포석호 점검 도우미</h2>
+          <h2 id="pet-chat-title">포부기 점검 도우미</h2>
           <p id="pet-chat-description">
             점검 내용을 편하게 물어보세요. 비용은 나중에 입력해도 돼요.
           </p>
         </div>
         <button
           className="pet-chat-close"
-          aria-label="포석호 채팅 닫기"
+          aria-label="포부기 채팅 닫기"
           onClick={() => onOpenChange(false)}
         >
           <X size={20} />

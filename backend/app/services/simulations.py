@@ -22,6 +22,7 @@ from app.schemas.simulations import (
     SimulationPoint,
 )
 from app.services import replays
+from app.services.csv_format import detect_csv_delimiter
 from app.services.series import _predict
 
 _ID_PATTERN = re.compile(r"[a-f0-9]{32}")
@@ -96,7 +97,9 @@ def _inspect_csv(
 
     with path.open("r", encoding="utf-8-sig", newline="") as stream:
         # readline iterator는 여러 줄 CSV 필드도 처리하며 tell/seek 인덱스를 유지한다.
-        reader = csv.reader(iter(stream.readline, ""), strict=True)
+        reader = csv.reader(
+            iter(stream.readline, ""), delimiter=detect_csv_delimiter(stream), strict=True
+        )
 
         columns = next(reader, [])
 
@@ -296,8 +299,10 @@ def simulation_batch(
             block = cursor // _INDEX_STEP
 
             with source_path.open("r", encoding="utf-8-sig", newline="") as stream:
+                delimiter = detect_csv_delimiter(stream)
+
                 stream.seek(manifest["offsets"][block])
-                reader = csv.DictReader(stream, fieldnames=manifest["columns"])
+                reader = csv.DictReader(stream, fieldnames=manifest["columns"], delimiter=delimiter)
 
                 for row_index, row in enumerate(reader, start=block * _INDEX_STEP):
                     if row_index < cursor:

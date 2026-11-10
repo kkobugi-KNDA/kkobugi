@@ -112,9 +112,47 @@ beforeEach(() => {
   mocks.uploadSimulation.mockResolvedValue(manifest);
 });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('업로드한 한 달 CSV로 실행하는 시뮬레이션', () => {
+  it('회원도 모바일 설정을 접고 펼치며 패널을 닫은 동안 배치 수신을 계속한다', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    mount();
+    await act(async () => {});
+    expect(
+      screen.queryByRole('complementary', { name: '시뮬레이션 옵션' }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '재생 설정' }));
+    fireEvent.change(screen.getByLabelText('저장한 시뮬레이션 CSV'), {
+      target: { value: manifest.id },
+    });
+    mocks.axRequest
+      .mockResolvedValueOnce(batch())
+      .mockResolvedValue({
+        ...batch(),
+        next_cursor: 4,
+        points: batch().points.map((point) => ({ ...point, row_index: point.row_index + 2 })),
+      });
+    fireEvent.click(screen.getByRole('button', { name: '실시간 시뮬레이션 시작' }));
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '재생 설정 접기' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('4 / 43,200행');
+    fireEvent.click(screen.getByRole('button', { name: '재생 설정' }));
+    expect(screen.getByLabelText('저장한 시뮬레이션 CSV')).toHaveValue(manifest.id);
+    expect(screen.getByRole('button', { name: '시뮬레이션 일시 정지' })).toBeEnabled();
+  });
+
   it('파일과 본인 모델을 고른 뒤 연결해야 재생할 수 있고 원래 기간과 행 수를 표시한다', async () => {
     const app = context();
 

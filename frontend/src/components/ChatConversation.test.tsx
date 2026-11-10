@@ -51,7 +51,7 @@ function chat(props: ChatConversationProps = {}) {
 }
 
 async function send(text: string) {
-  fireEvent.change(screen.getByRole('textbox', { name: '포석호에게 질문' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: '포부기에게 질문' }), {
     target: { value: text },
   });
   fireEvent.click(screen.getByRole('button', { name: '메시지 보내기' }));
@@ -71,7 +71,7 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
-describe('포석호의 대화형 점검 도우미', () => {
+describe('포부기의 대화형 점검 도우미', () => {
   it('게스트는 실제 대화 API를 사용하되 팀 데이터 식별자와 보고서는 연결하지 않는다', async () => {
     mocks.useApp.mockReturnValue({
       mode: 'demo',
@@ -96,7 +96,7 @@ describe('포석호의 대화형 점검 도우미', () => {
         },
       }),
     );
-    expect(screen.getByLabelText('포석호가 참조하는 데이터')).toHaveTextContent(
+    expect(screen.getByLabelText('포부기가 참조하는 데이터')).toHaveTextContent(
       '관람용 예시 화면 · 팀 데이터 연결 없음',
     );
     await send('무엇을 할 수 있어?');
@@ -125,7 +125,7 @@ describe('포석호의 대화형 점검 도우미', () => {
     expect(mocks.sendChat.mock.calls[0][0]).toHaveProperty('dataset_id', 'old-csv');
     view.rerender(chat({ datasetId: 'new-csv', datasetName: 'cal01_base_v7.csv' }));
     expect(screen.queryByText('기존 CSV 확인해줘')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('포석호가 참조하는 데이터')).toHaveTextContent(
+    expect(screen.getByLabelText('포부기가 참조하는 데이터')).toHaveTextContent(
       'cal01_base_v7.csv',
     );
     await send('새로 올린 파일 확인해줘');
@@ -159,7 +159,7 @@ describe('포석호의 대화형 점검 도우미', () => {
     const button = screen.getByRole('button', { name: '메시지 보내기' });
 
     expect(button).toBeDisabled();
-    fireEvent.change(screen.getByRole('textbox', { name: '포석호에게 질문' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '포부기에게 질문' }), {
       target: { value: '시뮬레이션은 어떻게 시작해?' },
     });
     expect(button).toBeEnabled();
@@ -175,7 +175,7 @@ describe('포석호의 대화형 점검 도우미', () => {
     expect(request).not.toHaveProperty('cost_inputs');
     expect(request).not.toHaveProperty('run_id');
     expect(request).not.toHaveProperty('model_key');
-    expect(screen.getByRole('log', { name: '포석호와 대화' })).toHaveTextContent(reply().answer);
+    expect(screen.getByRole('log', { name: '포부기와 대화' })).toHaveTextContent(reply().answer);
     expect(screen.getByText('문헌 검색 안내 · 외부 AI 응답 없음')).toBeInTheDocument();
     expect(mocks.axRequest).not.toHaveBeenCalled();
   });
@@ -195,12 +195,12 @@ describe('포석호의 대화형 점검 도우미', () => {
       ],
     });
     expect(screen.getAllByRole('article', { name: '내 질문' })).toHaveLength(2);
-    expect(screen.getAllByRole('article', { name: '포석호 답변' })).toHaveLength(2);
+    expect(screen.getAllByRole('article', { name: '포부기 답변' })).toHaveLength(2);
   });
 
   it('Enter는 전송하고 Shift+Enter와 한글 조합 중 Enter는 전송하지 않는다', async () => {
     render(chat());
-    const input = screen.getByRole('textbox', { name: '포석호에게 질문' });
+    const input = screen.getByRole('textbox', { name: '포부기에게 질문' });
 
     fireEvent.change(input, { target: { value: '어떤 점검부터 할까?' } });
     fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
@@ -220,7 +220,7 @@ describe('포석호의 대화형 점검 도우미', () => {
     await send('첫 질문');
     await send('두 번째 질문');
     expect(screen.getByRole('alert')).toHaveTextContent('연결을 확인해주세요.');
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue('두 번째 질문');
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue('두 번째 질문');
     expect(screen.getByText('첫 번째 안내')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '메시지 보내기' }));
     await act(async () => {});
@@ -248,7 +248,7 @@ describe('포석호의 대화형 점검 도우미', () => {
       resolveReply(reply('old', '이전 계정의 비공개 답변'));
     });
     expect(screen.queryByText('이전 계정의 비공개 답변')).not.toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue('');
   });
 
   it('창을 다시 그려도 같은 계정·문맥의 대화는 남는다', async () => {
@@ -267,7 +267,7 @@ describe('포석호의 대화형 점검 도우미', () => {
         initialQuestion: '  중간 확인 구간에 비정상이 없다는 뜻이 뭐야?  ',
       }),
     );
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue(
       '중간 확인 구간에 비정상이 없다는 뜻이 뭐야?',
     );
     expect(mocks.sendChat).not.toHaveBeenCalled();
@@ -282,11 +282,11 @@ describe('포석호의 대화형 점검 도우미', () => {
     const view = render(chat({ contextKey: 'training:same', initialQuestion: '처음 추천 질문' }));
 
     await send('이 경고를 확인하고 있어.');
-    fireEvent.change(screen.getByRole('textbox', { name: '포석호에게 질문' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '포부기에게 질문' }), {
       target: { value: '내가 직접 작성 중인 다음 질문' },
     });
     view.rerender(chat({ contextKey: 'training:same', initialQuestion: '다시 전달된 추천 질문' }));
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue(
       '내가 직접 작성 중인 다음 질문',
     );
     expect(screen.getByText('이 경고를 확인하고 있어.')).toBeInTheDocument();
@@ -299,7 +299,7 @@ describe('포석호의 대화형 점검 도우미', () => {
 
     await send('첫 문맥의 질문');
     view.rerender(chat({ contextKey: 'training:second', initialQuestion: '새 경고 질문' }));
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue('새 경고 질문');
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue('새 경고 질문');
     expect(screen.queryByText('첫 문맥의 질문')).not.toBeInTheDocument();
     expect(screen.queryByText(reply().answer)).not.toBeInTheDocument();
     expect(mocks.sendChat).toHaveBeenCalledOnce();
@@ -312,7 +312,7 @@ describe('포석호의 대화형 점검 도우미', () => {
 
     mocks.useApp.mockReturnValue({ mode: 'live', user: { id: 2, username: 'other' } });
     view.rerender(chat(props));
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue('');
     expect(mocks.sendChat).not.toHaveBeenCalled();
   });
 

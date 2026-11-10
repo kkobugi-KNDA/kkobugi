@@ -26,6 +26,9 @@ import {
   Skeleton,
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
+import { useExpertise } from '../context/ExpertiseContext';
+import AssistantGuide from '../components/AssistantGuide';
+import { inspectCsvFile, suggestLabelValues, type CsvMappingPreview } from '../lib/csv-mapping';
 import { DEMO_DATASET_DETAIL } from '../data/demo';
 import { api, errorMessage } from '../lib/api';
 import { bytes, csvTime, dateTime, number } from '../lib/format';
@@ -33,6 +36,8 @@ import type { DatasetDetail, DatasetSummary } from '../types';
 import './data-models.css';
 
 export default function DataPage() {
+  const { isExpert } = useExpertise();
+
   const {
     mode,
     datasets,
@@ -45,6 +50,20 @@ export default function DataPage() {
     restoreDataset,
     toast,
   } = useApp();
+
+  const [mappingPreview, setMappingPreview] = useState<CsvMappingPreview | null>(null);
+
+  const [mappingPending, setMappingPending] = useState(false);
+
+  const [mappingError, setMappingError] = useState('');
+
+  const mappingController = useRef<AbortController | null>(null);
+
+  const mappingSequence = useRef(0);
+
+  const manualMapping = useRef(new Set<string>());
+
+  const selectedLabelColumn = useRef('');
 
   const [deleteTarget, setDeleteTarget] = useState<DatasetSummary | null>(null);
 
@@ -71,16 +90,18 @@ export default function DataPage() {
     [columnsOpen, setColumnsOpen] = useState(false),
     [query, setQuery] = useState('');
   const [file, setFile] = useState<File | null>(null),
-    [timestampColumn, setTimestampColumn] = useState('timestamp'),
-    [labelColumn, setLabelColumn] = useState('label');
-  const [normalLabel, setNormalLabel] = useState('normal'),
-    [abnormalLabel, setAbnormalLabel] = useState('abnormal'),
+    [timestampColumn, setTimestampColumn] = useState(''),
+    [labelColumn, setLabelColumn] = useState('');
+  const [normalLabel, setNormalLabel] = useState(''),
+    [abnormalLabel, setAbnormalLabel] = useState(''),
     [uploading, setUploading] = useState(false),
     [uploadError, setUploadError] = useState(''),
     [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null),
     uploadController = useRef<AbortController | null>(null);
   useEffect(() => () => uploadController.current?.abort(), []);
+
+  useEffect(() => () => mappingController.current?.abort(), []);
 
   useEffect(() => {
     if (!trashOpen || mode === 'demo') return;
@@ -182,7 +203,73 @@ export default function DataPage() {
       setUploadError('200 MiB 이하의 CSV 파일을 선택해주세요.');
       return;
     }
+    mappingController.current?.abort();
+    mappingSequence.current += 1;
+    manualMapping.current.clear();
+    selectedLabelColumn.current = '';
+    setMappingPreview(null);
+    setMappingError('');
+    setTimestampColumn('');
+    setLabelColumn('');
+    setNormalLabel('');
+    setAbnormalLabel('');
     setFile(next);
+    setMappingPending(Boolean(next));
+    if (!next) return;
+
+    const controller = new AbortController();
+
+    const requestSequence = mappingSequence.current;
+
+    mappingController.current = controller;
+    inspectCsvFile(next, controller.signal)
+      .then((preview) => {
+        if (controller.signal.aborted || requestSequence !== mappingSequence.current) return;
+        setMappingPreview(preview);
+        if (!manualMapping.current.has('timestamp')) setTimestampColumn(preview.timestampColumn);
+
+        const chosenLabel = manualMapping.current.has('label')
+          ? selectedLabelColumn.current
+          : preview.labelColumn;
+
+        if (!manualMapping.current.has('label')) {
+          setLabelColumn(chosenLabel);
+          selectedLabelColumn.current = chosenLabel;
+        }
+        const suggestion = suggestLabelValues(
+          preview.values[chosenLabel] || [],
+          preview.truncatedValues.includes(chosenLabel),
+          chosenLabel,
+        );
+
+        if (!manualMapping.current.has('normal')) setNormalLabel(suggestion.normal);
+        if (!manualMapping.current.has('abnormal')) setAbnormalLabel(suggestion.abnormal);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted && requestSequence === mappingSequence.current)
+          setMappingError(errorMessage(failure));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && requestSequence === mappingSequence.current)
+          setMappingPending(false);
+      });
+  }
+
+  function chooseLabelColumn(column: string) {
+    manualMapping.current.add('label');
+    manualMapping.current.delete('normal');
+    manualMapping.current.delete('abnormal');
+    selectedLabelColumn.current = column;
+    setLabelColumn(column);
+
+    const suggestion = suggestLabelValues(
+      mappingPreview?.values[column] || [],
+      mappingPreview?.truncatedValues.includes(column),
+      column,
+    );
+
+    setNormalLabel(suggestion.normal);
+    setAbnormalLabel(suggestion.abnormal);
   }
   async function upload(event: FormEvent) {
     event.preventDefault();
@@ -240,6 +327,24 @@ export default function DataPage() {
   const labelTotal = inspection
     ? Object.values(inspection.label_counts).reduce((a, b) => a + b, 0)
     : 0;
+
+  const labelSuggestion = suggestLabelValues(
+    mappingPreview?.values[labelColumn] || [],
+    mappingPreview?.truncatedValues.includes(labelColumn),
+    labelColumn,
+  );
+
+  const mappingMessage = !file
+    ? 'CSV를 선택하면 실제 열 이름과 라벨 값을 먼저 읽어볼게요.'
+    : mappingPending
+      ? '파일을 읽고 있어요. 직접 입력한 값은 덮어쓰지 않아요.'
+      : mappingError ||
+        (!labelColumn
+          ? '판정에 사용할 열을 직접 선택해주세요. 여러 존의 라벨이 있으면 어느 존인지 제가 대신 정하지 않아요.'
+          : manualMapping.current.has('normal') || manualMapping.current.has('abnormal')
+            ? '직접 지정한 값을 유지하고 있어요. 대소문자와 소수점까지 원본의 판정 값과 같은지 확인해주세요.'
+            : labelSuggestion.explanation);
+
   return (
     <div className="page-stack">
       <PageHeader
@@ -674,7 +779,7 @@ export default function DataPage() {
               className="button primary"
               type="submit"
               form="dm-upload-form"
-              disabled={uploading || mode === 'demo'}
+              disabled={uploading || mappingPending || mode === 'demo'}
             >
               {uploading ? <RefreshCw size={16} className="dm-spin" /> : <FileUp size={17} />}{' '}
               {uploading ? '등록·검사 중' : '등록하고 검사'}
@@ -726,7 +831,7 @@ export default function DataPage() {
               className="button ghost dm-remove-file"
               disabled={uploading}
               onClick={() => {
-                setFile(null);
+                chooseFile(null);
                 if (fileInput.current) fileInput.current.value = '';
               }}
             >
@@ -734,62 +839,123 @@ export default function DataPage() {
             </button>
           )}
           <div className="dm-form-grid">
-            <Field label="시각 열" htmlFor="dm-time-col">
+            <Field label={isExpert ? '시각 컬럼' : '시간이 기록된 열'} htmlFor="dm-time-col">
               <input
                 id="dm-time-col"
                 className="input"
                 value={timestampColumn}
-                onChange={(e) => setTimestampColumn(e.target.value)}
+                list="dm-csv-columns"
+                placeholder="파일 선택 후 확인"
+                onChange={(e) => {
+                  manualMapping.current.add('timestamp');
+                  setTimestampColumn(e.target.value);
+                }}
                 required
                 disabled={uploading}
               />
             </Field>
-            <Field label="라벨 열" htmlFor="dm-label-col">
+            <Field
+              label={isExpert ? '라벨 컬럼' : '정상·이상 판정이 있는 열'}
+              htmlFor="dm-label-col"
+            >
               <input
                 id="dm-label-col"
                 className="input"
                 value={labelColumn}
-                onChange={(e) => setLabelColumn(e.target.value)}
+                list="dm-label-columns"
+                placeholder="판정할 열을 선택하세요"
+                onChange={(e) => chooseLabelColumn(e.target.value)}
                 required
                 disabled={uploading}
               />
             </Field>
           </div>
-          <div className="dm-label-preset">
-            <span>라벨이 0과 1이면</span>
-            <button
-              type="button"
-              className="button ghost"
-              disabled={uploading}
-              onClick={() => {
-                setNormalLabel('0');
-                setAbnormalLabel('1');
-              }}
-            >
-              Normal=0 / Abnormal=1 적용
-            </button>
-          </div>
+          <datalist id="dm-csv-columns">
+            {mappingPreview?.columns.map((column) => (
+              <option key={column} value={column} />
+            ))}
+          </datalist>
+          <datalist id="dm-label-columns">
+            {mappingPreview?.columns.map((column) => (
+              <option key={column} value={column} />
+            ))}
+          </datalist>
+          <datalist id="dm-label-values">
+            {mappingPreview?.values[labelColumn]?.map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+          {mappingPreview && mappingPreview.labelCandidates.length > 1 && (
+            <div className="dm-mapping-candidates">
+              <span>판정 열 후보</span>
+              {mappingPreview.labelCandidates.map((column) => (
+                <button
+                  type="button"
+                  className="button ghost"
+                  key={column}
+                  onClick={() => chooseLabelColumn(column)}
+                  disabled={uploading}
+                >
+                  {column}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="dm-form-grid">
-            <Field label="Normal 원본 값" htmlFor="dm-normal">
+            <Field label={isExpert ? '정상 라벨링 값' : '정상으로 표시된 값'} htmlFor="dm-normal">
               <input
                 id="dm-normal"
                 className="input"
                 value={normalLabel}
-                onChange={(e) => setNormalLabel(e.target.value)}
+                list="dm-label-values"
+                placeholder="원본 값 확인 필요"
+                onChange={(e) => {
+                  manualMapping.current.add('normal');
+                  setNormalLabel(e.target.value);
+                }}
                 required
                 disabled={uploading}
               />
             </Field>
-            <Field label="Abnormal 원본 값" htmlFor="dm-abnormal">
+            <Field label={isExpert ? '이상 라벨링 값' : '이상으로 표시된 값'} htmlFor="dm-abnormal">
               <input
                 id="dm-abnormal"
                 className="input"
                 value={abnormalLabel}
-                onChange={(e) => setAbnormalLabel(e.target.value)}
+                list="dm-label-values"
+                placeholder="원본 값 확인 필요"
+                onChange={(e) => {
+                  manualMapping.current.add('abnormal');
+                  setAbnormalLabel(e.target.value);
+                }}
                 required
                 disabled={uploading}
               />
             </Field>
+          </div>
+          <div className="dm-mapping-guide">
+            <AssistantGuide
+              id="csv-upload-mapping"
+              title="원본 값을 그대로 연결해요"
+              message={mappingMessage}
+              details={
+                mappingPreview
+                  ? [
+                      `${mappingPreview.partial ? '일부 미리보기' : '미리보기'}: ${number(mappingPreview.rowCount)}행을 읽었어요. 최대 2 MiB·10,000행까지만 읽으며 등록 후 서버가 전체를 검사해요.`,
+                      `구분자: ${mappingPreview.delimiter === ';' ? '세미콜론(;)' : mappingPreview.delimiter === '\t' ? '탭' : mappingPreview.delimiter === ',' ? '쉼표(,)' : mappingPreview.delimiter}. 원본 CSV는 바꾸지 않아요.`,
+                      `확인한 판정 값: ${(mappingPreview.values[labelColumn] || []).join(', ') || '열 선택 필요'}`,
+                    ]
+                  : []
+              }
+              context={{
+                datasetId: null,
+                runId: null,
+                modelKey: null,
+                selectedSignal: `아직 등록하지 않은 CSV의 로컬 미리보기 안내. ${mappingMessage}`,
+                contextKey: `csv-upload:${file?.name || 'empty'}:${labelColumn}`,
+              }}
+              question="CSV의 시간 열과 정상·이상 값을 어떻게 지정하면 돼?"
+            />
           </div>
           <Notice>
             시각·라벨 이외의 열은 숫자 채널로 검사해요. 등록 과정에서 결측을 채우거나 행을 정렬하지

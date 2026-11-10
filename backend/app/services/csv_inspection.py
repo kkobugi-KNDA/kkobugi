@@ -9,8 +9,10 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.schemas.datasets import CsvInspection, InspectionIssue
+from app.services.csv_format import detect_csv_delimiter
 
-METADATA_COLUMNS = frozenset({"machine_status", "all_sensors_missing"})
+# changepoint는 이상 정답에서 파생된 표시이므로 센서 특징으로 학습하면 안 된다.
+METADATA_COLUMNS = frozenset({"machine_status", "all_sensors_missing", "changepoint"})
 
 
 def _invalid_csv(message: str) -> HTTPException:
@@ -68,7 +70,7 @@ def inspect_csv(
     try:
         # utf-8-sig는 BOM이 있는 UTF-8과 일반 UTF-8을 모두 읽는다.
         with file_path.open("r", encoding="utf-8-sig", newline="") as csv_file:
-            csv_rows = csv.reader(csv_file, strict=True)
+            csv_rows = csv.reader(csv_file, delimiter=detect_csv_delimiter(csv_file), strict=True)
 
             columns = next(csv_rows, None)
 

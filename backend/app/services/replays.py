@@ -22,6 +22,7 @@ from app.schemas.runs import RunCreate, SplitInfo
 from app.services import datasets as dataset_service
 from app.services import modeling
 from app.services import runs as run_service
+from app.services.csv_format import detect_csv_delimiter
 from app.services.series import _predict
 
 _ID_PATTERN = re.compile(r"[a-f0-9]{32}")
@@ -284,7 +285,9 @@ def create_replay(
             writer.writerow(
                 [dataset.timestamp_column, *configuration.feature_columns, dataset.label_column]
             )
-            for source_row, row in enumerate(csv.DictReader(source_file)):
+            for source_row, row in enumerate(
+                csv.DictReader(source_file, delimiter=detect_csv_delimiter(source_file))
+            ):
                 if source_row < source_start_row:
                     continue
                 if source_row >= source_end_row:

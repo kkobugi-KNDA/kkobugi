@@ -165,6 +165,8 @@ export default function AssistantPet({
 
     const size = viewport();
 
+    let previousViewport = size;
+
     homePosition.current = clampPetPosition(
       { x: size.width - WIDTH - 30, y: size.height - HEIGHT - 24 },
       size,
@@ -207,6 +209,25 @@ export default function AssistantPet({
       if (animationFrame === null) animationFrame = window.requestAnimationFrame(updateDocking);
     };
 
+    // 휴대폰을 회전해도 마스코트가 화면 중간에 남아 재생 버튼을 가리지 않게 한다.
+    const resize = () => {
+      const nextViewport = viewport();
+
+      homePosition.current = clampPetPosition(
+        {
+          x:
+            (homePosition.current.x / Math.max(1, previousViewport.width - WIDTH)) *
+            Math.max(1, nextViewport.width - WIDTH),
+          y:
+            (homePosition.current.y / Math.max(1, previousViewport.height - HEIGHT)) *
+            Math.max(1, nextViewport.height - HEIGHT),
+        },
+        nextViewport,
+      );
+      previousViewport = nextViewport;
+      schedule();
+    };
+
     scheduleDocking.current = schedule;
     updateDocking();
     // 사이드바 접기나 모바일 헤더 줄바꿈은 window 크기를 바꾸지 않아도 내용 위치를 바꾼다.
@@ -216,11 +237,11 @@ export default function AssistantPet({
       typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
 
     if (scrollArea) sizeObserver?.observe(scrollArea);
-    window.addEventListener('resize', schedule);
+    window.addEventListener('resize', resize);
     window.addEventListener('scroll', schedule, true);
     window.addEventListener(ASSISTANT_GUIDANCE_EVENT, schedule);
     return () => {
-      window.removeEventListener('resize', schedule);
+      window.removeEventListener('resize', resize);
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener(ASSISTANT_GUIDANCE_EVENT, schedule);
       sizeObserver?.disconnect();
@@ -346,7 +367,7 @@ export default function AssistantPet({
           aria-live="polite"
           style={position.x < 300 ? { left: 0, right: 'auto' } : undefined}
         >
-          <strong>포석호 · 시뮬레이션 상태 확인</strong>
+          <strong>포부기 · 시뮬레이션 상태 확인</strong>
           <p>{notice}</p>
           <button className="assistant-pet-message-open" onClick={onOpen}>
             자세히 이야기하기
@@ -363,7 +384,7 @@ export default function AssistantPet({
       <button
         type="button"
         className="assistant-pet-button"
-        aria-label="포석호 점검 도우미 열기. 드래그해서 위치를 바꿀 수 있습니다."
+        aria-label="포부기 점검 도우미 열기. 드래그해서 위치를 바꿀 수 있습니다."
         aria-haspopup="dialog"
         onPointerEnter={wave}
         onFocus={wave}
@@ -391,7 +412,7 @@ export default function AssistantPet({
           </span>
         )}
         <span className="assistant-pet-tooltip" aria-hidden="true">
-          {working ? '결과를 확인하고 있어요' : '포석호와 대화하기'}
+          {working ? '결과를 확인하고 있어요' : '포부기와 대화하기'}
         </span>
       </button>
     </div>

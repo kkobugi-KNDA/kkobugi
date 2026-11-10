@@ -9,7 +9,7 @@ function Harness() {
   return (
     <>
       <button className="assistant-pet-button" onClick={() => setOpen(true)}>
-        포석호
+        포부기
       </button>
       <PetChatModal open={open} onOpenChange={setOpen}>
         <Counter />
@@ -54,10 +54,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('포석호에서 중앙으로 펼쳐지고 모이는 대화창', () => {
-  it('현재 포석호 위치를 모핑 시작점으로 쓰고 닫힌 뒤에도 대화를 유지한다', () => {
+describe('포부기에서 중앙으로 펼쳐지고 모이는 대화창', () => {
+  it('현재 포부기 위치를 모핑 시작점으로 쓰고 닫힌 뒤에도 대화를 유지한다', () => {
     render(<Harness />);
-    const pet = screen.getByRole('button', { name: '포석호' });
+    const pet = screen.getByRole('button', { name: '포부기' });
 
     vi.spyOn(pet, 'getBoundingClientRect').mockReturnValue({
       x: 20,
@@ -71,12 +71,12 @@ describe('포석호에서 중앙으로 펼쳐지고 모이는 대화창', () => 
       toJSON() {},
     });
     fireEvent.click(pet);
-    const dialog = screen.getByRole('dialog', { name: '포석호 점검 도우미' });
+    const dialog = screen.getByRole('dialog', { name: '포부기 점검 도우미' });
 
     expect(dialog.style.getPropertyValue('--pet-x')).toBe(`${76 - window.innerWidth / 2}px`);
     expect(dialog).toHaveAttribute('data-motion', 'opening');
     fireEvent.click(screen.getByRole('button', { name: '대화 유지 0' }));
-    fireEvent.click(screen.getByRole('button', { name: '포석호 채팅 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '포부기 채팅 닫기' }));
     expect(dialog).toHaveAttribute('data-motion', 'closing');
     act(() => vi.advanceTimersByTime(380));
     expect(dialog).not.toHaveAttribute('open');
@@ -86,8 +86,8 @@ describe('포석호에서 중앙으로 펼쳐지고 모이는 대화창', () => 
 
   it('Escape 취소 이벤트도 바로 사라지지 않고 닫는 모핑을 거친다', () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: '포석호' }));
-    const dialog = screen.getByRole('dialog', { name: '포석호 점검 도우미' });
+    fireEvent.click(screen.getByRole('button', { name: '포부기' }));
+    const dialog = screen.getByRole('dialog', { name: '포부기 점검 도우미' });
 
     fireEvent(dialog, new Event('cancel', { bubbles: false, cancelable: true }));
     expect(dialog).toHaveAttribute('data-motion', 'closing');
