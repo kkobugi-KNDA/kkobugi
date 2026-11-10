@@ -21,7 +21,8 @@ import LiveChart from '../components/LiveChart';
 import { Notice } from '../components/ui';
 import '../components/ax.css';
 import './simulation.css';
-import GuestSimulation from './GuestSimulation';
+import { DEMO_RUN_DETAIL } from '../data/demo';
+import { guestSimulationBatch, guestSimulationManifest } from '../lib/guest-simulation';
 
 const PumpSimulationScene = lazy(() => import('../components/PumpSimulationScene'));
 
@@ -40,26 +41,24 @@ const emptyPartInputs: PartInputs = {
 };
 
 export default function SimulationPage() {
-  const { user } = useApp();
-
-  return user?.is_guest ? <GuestSimulation /> : <MemberSimulationPage />;
-}
-
-function MemberSimulationPage() {
   const { runs, datasets, user, mode, selectedRunId, setSelectedRunId, refreshRuns } = useApp();
+
+  const isGuest = Boolean(user?.is_guest);
 
   const { isExpert } = useExpertise();
 
   const eligibleRuns = useMemo(
     () =>
-      runs.filter(
-        (run) =>
-          run.owner_id === user?.id &&
-          run.status === 'completed' &&
-          run.evaluation_status === 'completed' &&
-          ['xgboost', 'autoencoder'].includes(run.selected_model || ''),
-      ),
-    [runs, user?.id],
+      isGuest
+        ? [DEMO_RUN_DETAIL.run]
+        : runs.filter(
+            (run) =>
+              run.owner_id === user?.id &&
+              run.status === 'completed' &&
+              run.evaluation_status === 'completed' &&
+              ['xgboost', 'autoencoder'].includes(run.selected_model || ''),
+          ),
+    [runs, user?.id, isGuest],
   );
 
   const [runId, setRunId] = useState('');
@@ -78,7 +77,7 @@ function MemberSimulationPage() {
 
   const [playing, setPlaying] = useState(false);
 
-  const [speed, setSpeed] = useState(60);
+  const [speed, setSpeed] = useState(isGuest ? 10 : 60);
 
   const [showGraph, setShowGraph] = useState(false);
 
@@ -185,8 +184,9 @@ function MemberSimulationPage() {
 
     return {
       ownerId: user?.id ?? -1,
-      runId: chosenRun?.id || null,
-      modelKey: chosenRun?.selected_model || null,
+      preview: isGuest,
+      runId: isGuest ? null : chosenRun?.id || null,
+      modelKey: isGuest ? null : chosenRun?.selected_model || null,
       split: 'test',
       contextKey: `simulation:${activeSimulation?.id || 'waiting'}`,
       error: chosenRun ? error : undefined,
@@ -218,11 +218,12 @@ function MemberSimulationPage() {
     latestPoint,
     signalCount,
     lastSignal,
+    isGuest,
   ]);
 
   useEffect(() => {
-    publishSimulationStatus(mode === 'live' && user ? simulationStatus : null);
-  }, [simulationStatus, mode, user]);
+    publishSimulationStatus((mode === 'live' || isGuest) && user ? simulationStatus : null);
+  }, [simulationStatus, mode, user, isGuest]);
 
   useEffect(() => () => publishSimulationStatus(null), []);
 
@@ -239,9 +240,9 @@ function MemberSimulationPage() {
   useEffect(() => {
     const controller = new AbortController();
 
-    setSimulations([]);
+    setSimulations(isGuest ? [guestSimulationManifest(DEMO_RUN_DETAIL.run.id)] : []);
     setListError('');
-    if (mode === 'live')
+    if (mode === 'live' && !isGuest)
       axRequest<{ items: SimulationManifest[] }>('/simulations', { signal: controller.signal })
         .then((result) => {
           if (!controller.signal.aborted)
@@ -254,7 +255,7 @@ function MemberSimulationPage() {
           if (!controller.signal.aborted) setListError(errorMessage(failure));
         });
     return () => controller.abort();
-  }, [mode, user?.id]);
+  }, [mode, user?.id, isGuest]);
 
   function resetPlayback() {
     batchController.current?.abort();
@@ -270,15 +271,17 @@ function MemberSimulationPage() {
     generation.current += 1;
     uploadController.current?.abort();
     resetPlayback();
-    setSimulation(null);
-    setChannel('');
+    const example = isGuest && runId ? guestSimulationManifest(runId) : null;
+
+    setSimulation(example);
+    setChannel(example?.feature_columns[0] || '');
     setUploading(false);
     setError('');
     return () => {
       uploadController.current?.abort();
       batchController.current?.abort();
     };
-  }, [runId, user?.id, mode]);
+  }, [runId, user?.id, mode, isGuest]);
 
   useEffect(() => {
     setFile(null);
@@ -300,7 +303,7 @@ function MemberSimulationPage() {
   }
 
   async function connectFile() {
-    if (!file || !chosenRun?.selected_model || uploading || mode !== 'live') return;
+    if (!file || !chosenRun?.selected_model || uploading || mode !== 'live' || isGuest) return;
     const controller = new AbortController();
 
     const requestGeneration = ++generation.current;
@@ -337,17 +340,19 @@ function MemberSimulationPage() {
 
   // 현재 배치만 추론한다. 화면 이동·정지·모델 전환은 진행 중 요청도 취소한다.
   useEffect(() => {
-    if (!playing || !simulation || !channel || mode !== 'live') return;
+    if (!playing || !simulation || !channel || (mode !== 'live' && !isGuest)) return;
     const controller = new AbortController();
 
     batchController.current = controller;
     const timer = setTimeout(
       async () => {
         try {
-          const batch = await axRequest<SimulationBatch>(
-            `/simulations/${simulation.id}/batch?cursor=${cursor}&limit=${speed}&channel=${encodeURIComponent(channel)}`,
-            { signal: controller.signal },
-          );
+          const batch = isGuest
+            ? guestSimulationBatch(simulation.id, cursor, speed, channel)
+            : await axRequest<SimulationBatch>(
+                `/simulations/${simulation.id}/batch?cursor=${cursor}&limit=${speed}&channel=${encodeURIComponent(channel)}`,
+                { signal: controller.signal },
+              );
 
           if (controller.signal.aborted) return;
           setPoints((previous) => [...previous, ...batch.points].slice(-600));
@@ -374,7 +379,7 @@ function MemberSimulationPage() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [playing, simulation?.id, channel, cursor, speed, mode]);
+  }, [playing, simulation?.id, channel, cursor, speed, mode, isGuest]);
 
   const suggestedCosts = useMemo<AssistantCostInput>(() => {
     const costs: AssistantCostInput = { component_name: selectedPart?.label };
@@ -400,7 +405,7 @@ function MemberSimulationPage() {
     const point = lastSignal || latestPoint;
 
     const signal = point
-      ? `${point.timestamp}, ${lastSignal?.channel || channel}=${point.value}, 모델 판정=${point.predicted_code}, 점수=${point.score}`
+      ? `${point.timestamp}, ${lastSignal?.channel || channel}=${point.value}, ${isGuest ? '예시 신호' : '모델 판정'}=${point.predicted_code}, 점수=${point.score}`
       : '아직 수신한 값 없음';
 
     const serviceLife =
@@ -408,11 +413,12 @@ function MemberSimulationPage() {
         ? '정비 기준·누적 운전시간 미입력. 잔여수명 추정 불가.'
         : `사용자 입력 기준수명 ${currentPartInputs.expectedHours}시간 - 누적 운전시간 ${currentPartInputs.usedHours}시간 = 입력 기준 잔여 ${remainingHours}시간. 센서 기반 수명 예측이 아님.`;
 
-    const selectedSignal = `업로드한 생성 CSV ${simulation?.filename || '미선택'}의 시뮬레이션. ${signal}. ${selectedPart?.label || '전체 펌프'}는 사용자가 확인 대상으로 선택했으며 모델이 고장 부위로 특정하지 않음. ${serviceLife}`;
+    const selectedSignal = `${isGuest ? '브라우저에서 생성한 예시 데이터. 실제 학습 모델 추론 아님.' : '업로드한 생성 CSV'} ${simulation?.filename || '미선택'}의 시뮬레이션. ${signal}. ${selectedPart?.label || '전체 펌프'}는 사용자가 확인 대상으로 선택했으며 모델이 고장 부위로 특정하지 않음. ${serviceLife}`;
 
     openPetAssistant({
-      runId: chosenRun?.id || null,
-      modelKey: chosenRun?.selected_model || null,
+      datasetId: isGuest ? null : undefined,
+      runId: isGuest ? null : chosenRun?.id || null,
+      modelKey: isGuest ? null : chosenRun?.selected_model || null,
       split: 'test',
       selectedSignal,
       suggestedCostInputs: suggestedCosts,
@@ -428,7 +434,11 @@ function MemberSimulationPage() {
           <span>SIMULATION / PUMP</span>
           <h1>시뮬레이션</h1>
         </div>
-        <p>CSV 수신 · 저장 모델 추론 · 3D 확인</p>
+        <p>
+          {isGuest
+            ? '예시 데이터 · 실제 학습 모델 추론 아님'
+            : 'CSV 수신 · 저장 모델 추론 · 3D 확인'}
+        </p>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
       {listError && <Notice tone="error">{listError}</Notice>}
@@ -485,12 +495,14 @@ function MemberSimulationPage() {
                   {run.selected_model === 'xgboost' ? 'XGBoost' : 'AutoEncoder'} ·{' '}
                   {datasets.find((dataset) => dataset.id === run.dataset_id)?.filename ||
                     run.id.slice(0, 8)}
+                  {isGuest ? ' · 예시' : ''}
                 </option>
               ))}
             </select>
           </label>
           <button
             className="simulation-text-button"
+            disabled={isGuest}
             onClick={() => {
               void refreshRuns().catch((failure) => setError(errorMessage(failure)));
             }}
@@ -505,12 +517,16 @@ function MemberSimulationPage() {
           <label className="simulation-file">
             <FileUp size={21} />
             <strong>시뮬레이션 CSV 선택</strong>
-            <span>{file?.name || '한 달 데이터 · timestamp + 학습 채널'}</span>
+            <span>
+              {isGuest
+                ? '예시 CSV가 연결되어 있어요'
+                : file?.name || '한 달 데이터 · timestamp + 학습 채널'}
+            </span>
             <input
               aria-label="시뮬레이션 CSV 업로드"
               type="file"
               accept=".csv,text/csv"
-              disabled={uploading || mode !== 'live'}
+              disabled={uploading || mode !== 'live' || isGuest}
               onChange={(event) => {
                 setFile(event.target.files?.[0] || null);
                 setError('');
@@ -519,7 +535,7 @@ function MemberSimulationPage() {
           </label>
           <button
             className="simulation-connect"
-            disabled={!file || !chosenRun || uploading || mode !== 'live'}
+            disabled={!file || !chosenRun || uploading || mode !== 'live' || isGuest}
             onClick={() => void connectFile()}
           >
             {uploading ? (
@@ -559,7 +575,10 @@ function MemberSimulationPage() {
           <button
             className="simulation-start"
             disabled={
-              !simulation || !channel || mode !== 'live' || cursor >= (simulation?.total_rows || 0)
+              !simulation ||
+              !channel ||
+              (mode !== 'live' && !isGuest) ||
+              cursor >= (simulation?.total_rows || 0)
             }
             onClick={() => setPlaying((previous) => !previous)}
           >
@@ -745,9 +764,11 @@ function MemberSimulationPage() {
             <header>
               <strong>{channel || '채널 미선택'}</strong>
               <span>
-                {isExpert
-                  ? '49개 채널의 모델 판정 · 원인 채널 아님'
-                  : '여러 채널을 함께 확인한 점검 신호'}
+                {isGuest
+                  ? '합성 예시 신호 · 실제 모델 추론 아님'
+                  : isExpert
+                    ? '49개 채널의 모델 판정 · 원인 채널 아님'
+                    : '여러 채널을 함께 확인한 점검 신호'}
               </span>
             </header>
             <LiveChart points={points} channel={channel || '채널'} />

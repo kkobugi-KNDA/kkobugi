@@ -72,6 +72,52 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('포석호의 대화형 점검 도우미', () => {
+  it('게스트는 실제 대화 API를 사용하되 팀 데이터 식별자와 보고서는 연결하지 않는다', async () => {
+    mocks.useApp.mockReturnValue({
+      mode: 'demo',
+      user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+    });
+    mocks.sendChat.mockResolvedValue({
+      ...reply('guest-answer', '안녕하세요. 사용 방법을 알려드릴게요.'),
+      source_mode: 'llm',
+    });
+    render(
+      chat({
+        datasetId: 'team-csv',
+        runId: 'team-run',
+        modelKey: 'xgboost',
+        selectedSignal: '팀 비공개 문맥',
+        simulationContext: {
+          filename: 'example.csv',
+          status: 'playing',
+          cursor: 10,
+          total_rows: 100,
+          signal_count: 2,
+        },
+      }),
+    );
+    expect(screen.getByLabelText('포석호가 참조하는 데이터')).toHaveTextContent(
+      '관람용 예시 화면 · 팀 데이터 연결 없음',
+    );
+    await send('무엇을 할 수 있어?');
+
+    const sent = mocks.sendChat.mock.calls[0][0] as ChatRequest;
+
+    expect(sent.question).toBe('무엇을 할 수 있어?');
+    expect(sent).not.toHaveProperty('dataset_id');
+    expect(sent).not.toHaveProperty('run_id');
+    expect(sent).not.toHaveProperty('model_key');
+    expect(sent.simulation_context).toMatchObject({
+      filename: 'example.csv',
+      cursor: 10,
+      signal_count: 2,
+    });
+    expect(sent.observation).toContain('관람용 예시 화면');
+    expect(sent.observation).not.toContain('팀 비공개 문맥');
+    expect(screen.getByText('안녕하세요. 사용 방법을 알려드릴게요.')).toBeInTheDocument();
+    expect(mocks.axRequest).not.toHaveBeenCalled();
+  });
+
   it('새 CSV로 바꾸면 이전 답변과 진행 중 요청을 분리하고 새 ID만 전송한다', async () => {
     const view = render(chat({ datasetId: 'old-csv', datasetName: 'old.csv' }));
 

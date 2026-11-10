@@ -60,6 +60,10 @@ export default function ChatConversation({
 }: ChatConversationProps) {
   const { user, mode } = useApp();
 
+  const isGuest = user?.is_guest === true;
+
+  const canChat = Boolean(user) && (mode === 'live' || isGuest);
+
   const { expertise } = useExpertise();
 
   const [messages, setMessages] = useState<ChatEntry[]>([]);
@@ -192,6 +196,7 @@ export default function ChatConversation({
   }, [messages]);
 
   async function createReport(entryId: string, messageId: string, currentGeneration: number) {
+    if (isGuest) return;
     const controller = new AbortController();
 
     reportControllers.current.add(controller);
@@ -231,7 +236,7 @@ export default function ChatConversation({
     event?.preventDefault();
     const text = question.trim();
 
-    if (!text || busy || mode !== 'live' || !user) return;
+    if (!text || busy || !canChat) return;
     const costs: AssistantCostInput = {};
 
     // 비운 비용은 누락 상태로 전송한다. 0을 넣거나 견적을 채워야 대화가 열리는 조건은 없다.
@@ -257,7 +262,11 @@ export default function ChatConversation({
 
     const requestObservation = [
       observation.trim(),
-      selectedSignal ? `현재 확인할 문맥: ${selectedSignal}` : '',
+      isGuest
+        ? '관람용 예시 화면 · 팀 데이터 연결 없음'
+        : selectedSignal
+          ? `현재 확인할 문맥: ${selectedSignal}`
+          : '',
     ]
       .filter(Boolean)
       .join('\n')
@@ -275,8 +284,8 @@ export default function ChatConversation({
         {
           question: text,
           history: recentChatHistory(messages.map(({ role, content }) => ({ role, content }))),
-          ...(datasetId ? { dataset_id: datasetId } : {}),
-          ...(runId && modelKey ? { run_id: runId, model_key: modelKey, split } : {}),
+          ...(!isGuest && datasetId ? { dataset_id: datasetId } : {}),
+          ...(!isGuest && runId && modelKey ? { run_id: runId, model_key: modelKey, split } : {}),
           ...(requestObservation ? { observation: requestObservation } : {}),
           ...(Object.keys(costs).length ? { cost_inputs: costs } : {}),
           ...(currentSimulation ? { simulation_context: currentSimulation } : {}),
@@ -300,7 +309,7 @@ export default function ChatConversation({
       ]);
       setQuestion('');
       setPendingQuestion('');
-      if (reply.report_message_id)
+      if (!isGuest && reply.report_message_id)
         void createReport(reply.message_id, reply.report_message_id, currentGeneration);
     } catch (failure) {
       if (!controller.signal.aborted && currentGeneration === generation.current)
@@ -325,13 +334,15 @@ export default function ChatConversation({
       <div className="chat-dataset-context" aria-label="포석호가 참조하는 데이터">
         <FileText size={15} aria-hidden="true" />
         <span>
-          {datasetId
-            ? `참조 CSV: ${datasetName || '선택한 CSV'}`
-            : runId
-              ? '참조: 선택한 실행의 학습 CSV'
-              : '참조 CSV 없음 · 데이터 화면에서 파일을 선택해주세요.'}
+          {isGuest
+            ? '관람용 예시 화면 · 팀 데이터 연결 없음'
+            : datasetId
+              ? `참조 CSV: ${datasetName || '선택한 CSV'}`
+              : runId
+                ? '참조: 선택한 실행의 학습 CSV'
+                : '참조 CSV 없음 · 데이터 화면에서 파일을 선택해주세요.'}
         </span>
-        {datasetId && !runId && <small>CSV 검사 정보 기준</small>}
+        {!isGuest && datasetId && !runId && <small>CSV 검사 정보 기준</small>}
       </div>
       <div
         ref={transcriptRef}
@@ -404,7 +415,7 @@ export default function ChatConversation({
                     보고서: {entry.reportError}
                   </p>
                 )}
-                {entry.reply.report_message_id && (
+                {!isGuest && entry.reply.report_message_id && (
                   <button
                     type="button"
                     className="chat-report-button"
@@ -512,7 +523,7 @@ export default function ChatConversation({
             ))}
           </div>
         </details>
-        {mode !== 'live' && <p className="chat-feedback">대화는 로그인 후 사용할 수 있어요.</p>}
+        {!canChat && <p className="chat-feedback">대화는 로그인 후 사용할 수 있어요.</p>}
         {error && (
           <p className="chat-feedback chat-feedback-error" role="alert">
             {error} 질문은 남아 있어요. 다시 전송할 수 있습니다.
@@ -525,14 +536,14 @@ export default function ChatConversation({
             maxLength={3000}
             onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={composerKeyDown}
-            disabled={busy || mode !== 'live'}
+            disabled={busy || !canChat}
             placeholder="메시지를 입력하세요. 비용 없이 질문해도 괜찮아요."
             rows={2}
           />
           <button
             aria-label="메시지 보내기"
             type="submit"
-            disabled={!question.trim() || busy || mode !== 'live' || !user}
+            disabled={!question.trim() || busy || !canChat}
           >
             {busy ? <LoaderCircle size={19} className="spin" /> : <Send size={19} />}
           </button>

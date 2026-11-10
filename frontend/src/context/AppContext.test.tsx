@@ -35,14 +35,19 @@ beforeEach(() => {
 });
 
 describe('QR 게스트 세션', () => {
-  it('guest=1로 들어오면 실제 게스트 세션과 예시 데이터로 시작한다', async () => {
+  it('guest=1은 자동 입장하지 않고 명시적인 게스트 입장 후 세션을 만든다', async () => {
     window.history.replaceState({}, '', '/?guest=1');
+    mocks.me.mockRejectedValue(new Error('no session'));
 
     const hook = renderHook(() => useApp(), { wrapper: AppProvider });
 
-    await waitFor(() => expect(hook.result.current.user?.is_guest).toBe(true));
+    await waitFor(() => expect(hook.result.current.booting).toBe(false));
+    expect(hook.result.current.user).toBeNull();
+    expect(mocks.guest).not.toHaveBeenCalled();
+    await act(() => hook.result.current.enterGuest());
+    expect(hook.result.current.user?.is_guest).toBe(true);
     expect(mocks.guest).toHaveBeenCalledTimes(1);
-    expect(mocks.me).not.toHaveBeenCalled();
+    expect(mocks.me).toHaveBeenCalledTimes(1);
     expect(hook.result.current.mode).toBe('demo');
     expect(hook.result.current.datasets).toEqual([DEMO_DATASET_DETAIL.dataset]);
     expect(mocks.datasets).not.toHaveBeenCalled();
@@ -72,6 +77,7 @@ describe('QR 게스트 세션', () => {
 
     await waitFor(() => expect(hook.result.current.user?.id).toBe(1));
     expect(hook.result.current.mode).toBe('live');
+    expect(mocks.guest).not.toHaveBeenCalled();
     await waitFor(() => expect(mocks.datasets).toHaveBeenCalledTimes(1));
   });
 });

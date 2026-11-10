@@ -69,11 +69,6 @@ def test_guest_cannot_read_or_modify_team_data(auth_client):
             headers=AUTH_REQUEST_HEADERS,
             json={"dataset_id": "a" * 32, "model_key": "xgboost"},
         ),
-        auth_client.post(
-            "/api/v1/assistant/chat",
-            headers=AUTH_REQUEST_HEADERS,
-            json={"question": "팀 데이터 알려줘"},
-        ),
     ]
 
     for response in responses:

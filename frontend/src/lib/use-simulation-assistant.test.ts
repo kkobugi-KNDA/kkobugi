@@ -26,6 +26,17 @@ afterEach(() => {
 });
 
 describe('시뮬레이션에서만 10분마다 상태를 확인하는 포석호', () => {
+  it('관람 예시의 신호를 실제 학습 모델의 예측으로 설명하지 않는다', () => {
+    publishSimulationStatus({ ...status, preview: true });
+
+    const { result } = renderHook(() => useSimulationAssistant(true, 1));
+
+    act(() => vi.advanceTimersByTime(SIMULATION_CHECK_INTERVAL_MS));
+    expect(result.current.notice).toContain('예시 점검 표시는 2행');
+    expect(result.current.notice).toContain('실제 모델의 예측 결과는 아니에요');
+    expect(result.current.notice).not.toContain('모델의 점검 신호는');
+  });
+
   it('10분 전에는 알리지 않고 최신 수신 상태로 말풍선을 만든다', () => {
     publishSimulationStatus(status);
     const { result } = renderHook(() => useSimulationAssistant(true, 1));

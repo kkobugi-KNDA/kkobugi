@@ -1,5 +1,6 @@
 """현재 질문·이전 대화·확인한 문헌을 연결하며 비용 없이도 대화한다."""
 
+import hashlib
 import json
 import re
 import time
@@ -7,9 +8,13 @@ from uuid import uuid4
 
 import httpx
 from fastapi import HTTPException
+from sqlalchemy import case, delete
+from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.models import LoginAttempt, LoginSession
 from app.schemas.assistant import AssistantRequest, AssistantResponse, Citation, CostEstimate
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services import assistant
@@ -211,6 +216,11 @@ def _llm_answer(
             "컬럼 이름만으로 설비 종류·센서 위치·단위를 확정하지 않는다. "
             "모든 자료를 펌프로 가정하지 않는다. "
             "검사 요약에 없는 셀이나 전체 원본을 읽었다고 말하지 않는다. "
+            "guest_preview가 true면 관람자의 샘플 체험이다. "
+            "실제 AI 대화로 앱 사용과 일반 점검을 안내한다. "
+            "example_browser_state는 사용자 브라우저의 예시 화면 상태이며 "
+            "실제 센서·학습 결과가 아니다. "
+            "이 상태를 실제 모델 판정으로 주장하거나 팀 자료를 조회했다고 말하지 않는다. "
             "시뮬레이션은 브라우저가 전한 생성 CSV 재생 상태다. "
             "현장의 실측이나 확정 고장이 아니다. "
             "익명 채널로 고장 부품, 남은 수명, 교체 필요를 확정하지 않는다. "
@@ -289,6 +299,115 @@ def _llm_answer(
         ) from None
     except (ValueError, TypeError, KeyError, AttributeError):
         raise _invalid_answer() from None
+
+
+def _consume_guest_chat_budget(database_session: Session, login_session: LoginSession) -> None:
+    """같은 관람 브라우저의 AI 호출을 분당 10회, 세션당 50회로 제한한다."""
+    current_time = int(time.time())
+
+    try:
+        database_session.execute(
+            delete(LoginAttempt).where(
+                LoginAttempt.key.like("guestai:%"),
+                LoginAttempt.window_start <= current_time - 7200,
+            )
+        )
+        for scope, limit, window_seconds in (("minute", 10, 60), ("session", 50, 7200)):
+            digest = hashlib.sha256(f"{scope}:{login_session.token_hash}".encode()).hexdigest()
+
+            key = "guestai:" + digest[:56]
+
+            expired = LoginAttempt.window_start <= current_time - window_seconds
+
+            statement = insert(LoginAttempt).values(key=key, failures=1, window_start=current_time)
+
+            statement = statement.on_conflict_do_update(
+                index_elements=[LoginAttempt.key],
+                set_={
+                    "failures": case((expired, 1), else_=LoginAttempt.failures + 1),
+                    "window_start": case((expired, current_time), else_=LoginAttempt.window_start),
+                },
+            ).returning(LoginAttempt.failures, LoginAttempt.window_start)
+
+            count, start_time = database_session.execute(statement).one()
+
+            if count > limit:
+                database_session.rollback()
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "GUEST_CHAT_LIMITED",
+                        "message": "관람용 AI 요청 한도에 도달했어요.",
+                    },
+                    headers={
+                        "Retry-After": str(max(1, start_time + window_seconds - current_time))
+                    },
+                )
+        database_session.commit()
+    except SQLAlchemyError:
+        database_session.rollback()
+        raise assistant.assistant_error(
+            503, "AI_UNAVAILABLE", "AI 요청을 준비하지 못했어요."
+        ) from None
+
+
+def create_guest_chat(
+    database_session: Session, login_session: LoginSession, settings: Settings, body: ChatRequest
+) -> ChatResponse:
+    """공개 문헌과 요청자가 전달한 내용만 사용하며 공용 관람 계정에 대화를 저장하지 않는다."""
+    if body.dataset_id or body.run_id or body.model_key:
+        raise assistant.assistant_error(
+            403, "GUEST_READ_ONLY", "관람 대화에서는 팀 CSV와 학습 결과를 연결할 수 없어요."
+        )
+    _consume_guest_chat_budget(database_session, login_session)
+    recent_context = "\n".join(turn.content for turn in body.history[-4:])
+
+    chunks = assistant.retrieve(body.question, body.observation + "\n" + recent_context)
+
+    citations = [
+        Citation(**{key: chunk[key] for key in ("id", "title", "url", "pages", "summary")})
+        for chunk in chunks
+    ]
+
+    cost = assistant.calculate_cost(body.cost_inputs) if body.cost_inputs is not None else None
+
+    facts = {
+        "guest_preview": True,
+        "dataset": None,
+        "model": None,
+        "observation": body.observation,
+        "cost": cost.model_dump() if cost else None,
+        "example_browser_state": body.simulation_context.model_dump()
+        if body.simulation_context
+        else None,
+        "sources": [citation.model_dump() for citation in citations],
+        "available_pages": [
+            "작업실",
+            "데이터",
+            "모델 학습 선택",
+            "시뮬레이션",
+            "보고서",
+            "비용 비교",
+        ],
+    }
+
+    answer = _llm_answer(settings, body, facts, citations)
+
+    cost_text = _cost_text(cost)
+
+    if cost_text:
+        answer += "\n\n" + cost_text
+    return ChatResponse(
+        message_id=uuid4().hex,
+        created_at=int(time.time()),
+        answer=answer,
+        source_mode="llm",
+        citations=citations,
+        limitations=["관람 화면의 예시는 실제 설비 측정이나 팀의 학습 결과가 아니에요."],
+        cost=cost,
+        model_snapshot=None,
+        report_message_id=None,
+    )
 
 
 def create_chat(

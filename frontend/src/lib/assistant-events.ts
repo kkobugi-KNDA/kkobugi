@@ -22,6 +22,7 @@ export interface SimulationAssistantStatus extends AssistantOpenDetail {
   ownerId: number;
   simulationContext: SimulationChatContext;
   error?: string;
+  preview?: boolean;
 }
 
 let latestSimulationStatus: SimulationAssistantStatus | null = null;

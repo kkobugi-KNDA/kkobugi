@@ -24,8 +24,12 @@ export function simulationStatusMessage(status: SimulationAssistantStatus | null
   if (status.error) return `${stateName} · ${received}. 오류를 확인해주세요: ${status.error}`;
   const signals =
     context.cursor === 0
-      ? '아직 모델이 확인한 값은 없어요.'
-      : `모델의 점검 신호는 ${context.signal_count.toLocaleString()}행이에요. 고장 확정은 아니에요.`;
+      ? status.preview
+        ? '아직 재생한 예시 값은 없어요.'
+        : '아직 모델이 확인한 값은 없어요.'
+      : status.preview
+        ? `예시 점검 표시는 ${context.signal_count.toLocaleString()}행이에요. 실제 모델의 예측 결과는 아니에요.`
+        : `모델의 점검 신호는 ${context.signal_count.toLocaleString()}행이에요. 고장 확정은 아니에요.`;
 
   return `${stateName} · ${received}. ${context.timestamp ? `마지막 수신 ${context.timestamp.replace('T', ' ')}. ` : ''}${signals}`;
 }

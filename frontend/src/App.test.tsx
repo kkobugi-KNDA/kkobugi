@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import App, { assistantDetailForPet } from './App';
 import { ASSISTANT_OPEN_EVENT, type AssistantOpenDetail } from './lib/assistant-events';
-const mocks = vi.hoisted(() => ({ login: vi.fn(), me: vi.fn(), logout: vi.fn() }));
+const mocks = vi.hoisted(() => ({ login: vi.fn(), me: vi.fn(), logout: vi.fn(), guest: vi.fn() }));
 vi.mock('./lib/api', () => ({
   api: { ...mocks },
   errorMessage: (error: unknown) => (error as Error).message,
@@ -34,8 +34,52 @@ beforeEach(() => {
   mocks.me.mockRejectedValue(new Error('no session'));
   mocks.logout.mockResolvedValue(undefined);
   mocks.login.mockReset();
+  mocks.guest.mockReset().mockResolvedValue({
+    user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+  });
 });
 describe('workspace navigation and authentication boundaries', () => {
+  it('이미 게스트로 로그인했어도 QR을 다시 열면 로그인 화면에서 입장을 기다린다', async () => {
+    mocks.me.mockResolvedValue({
+      user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+    });
+    render(
+      <MemoryRouter initialEntries={['/?guest=1']}>
+        <App />
+        <CurrentPath />
+      </MemoryRouter>,
+    );
+
+    const button = await screen.findByRole('button', { name: '게스트로 입장' });
+
+    expect(screen.queryByRole('link', { name: '작업실' })).not.toBeInTheDocument();
+    expect(mocks.guest).not.toHaveBeenCalled();
+    expect(mocks.logout).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await screen.findByRole('link', { name: '작업실' });
+    expect(screen.getByLabelText('현재 주소')).toHaveTextContent(/^\/$/);
+  });
+
+  it('QR 주소는 로그인 화면을 보여주고 게스트 버튼을 누르면 기존 작업실로 입장한다', async () => {
+    render(
+      <MemoryRouter initialEntries={['/?guest=1']}>
+        <App />
+        <CurrentPath />
+      </MemoryRouter>,
+    );
+
+    const button = await screen.findByRole('button', { name: '게스트로 입장' });
+
+    expect(screen.getByRole('button', { name: '로그인' })).toBeInTheDocument();
+    expect(mocks.guest).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: '시뮬레이션 화면' })).not.toBeInTheDocument();
+    fireEvent.click(button);
+    await screen.findByRole('link', { name: '작업실' });
+    expect(screen.getByLabelText('현재 주소')).toHaveTextContent(/^\/$/);
+    expect(screen.getByRole('button', { name: '도우미 열기' })).toBeInTheDocument();
+    expect(mocks.guest).toHaveBeenCalledTimes(1);
+  });
+
   it('passes a warning event question into the mascot conversation draft', async () => {
     sessionStorage.setItem('kkobugi:preview', '1');
     render(
