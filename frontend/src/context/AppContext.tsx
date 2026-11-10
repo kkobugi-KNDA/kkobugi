@@ -96,28 +96,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const controller = new AbortController();
 
-    // QR의 게스트 진입은 실제 쿠키 세션을 만든다. 기존 팀원 세션은 서버가 유지한다.
-    const authentication = guestRequested
-      ? api.guest(controller.signal)
-      : api.me(controller.signal);
+    // QR을 읽어도 자동 입장하지 않는다. 로그인 화면의 게스트 버튼을 눌러 세션을 만든다.
+    if (guestRequested) sessionStorage.removeItem('kkobugi:preview');
+
+    const authentication = api.me(controller.signal);
 
     authentication
       .then((result) => {
         if (!controller.signal.aborted && accountVersion.current === requestAccount) {
-          if (guestRequested) sessionStorage.removeItem('kkobugi:preview');
           setMode(result.user.is_guest ? 'demo' : 'live');
           setUser(result.user);
         }
       })
-      .catch((failure) => {
-        if (
-          guestRequested &&
-          !controller.signal.aborted &&
-          accountVersion.current === requestAccount
-        ) {
-          toast(errorMessage(failure), 'error');
-        }
-      })
+      .catch(() => {})
       .finally(() => {
         if (!controller.signal.aborted && accountVersion.current === requestAccount)
           setBooting(false);

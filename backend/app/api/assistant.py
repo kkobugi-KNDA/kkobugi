@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user
+from app.api.auth import CurrentSession, get_current_user
 from app.db import get_db
 from app.models import User
 from app.schemas.assistant import AssistantRequest, AssistantResponse
@@ -25,10 +25,14 @@ def create_chat(
     body: ChatRequest,
     request: Request,
     database_session: DatabaseSession,
-    current_user: CurrentUser,
+    current_session: CurrentSession,
 ) -> ChatResponse:
+    if current_session.user.is_guest:
+        return chat_service.create_guest_chat(
+            database_session, current_session.session, request.app.state.settings, body
+        )
     return chat_service.create_chat(
-        database_session, current_user.id, request.app.state.settings, body
+        database_session, current_session.user.id, request.app.state.settings, body
     )
 
 

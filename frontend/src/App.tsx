@@ -446,22 +446,18 @@ function Shell() {
             </footer>
           </main>
         </div>
-        {!user?.is_guest && (
-          <>
-            <AssistantPet
-              onOpen={openFromPet}
-              working={running.length > 0}
-              notice={assistantOpen ? '' : notice}
-              onDismissNotice={dismissNotice}
-            />
-            <Assistant
-              open={assistantOpen}
-              onOpenChange={setAssistantOpen}
-              detail={assistantDetail}
-              getSimulationContext={getSimulationContext}
-            />
-          </>
-        )}
+        <AssistantPet
+          onOpen={openFromPet}
+          working={running.length > 0}
+          notice={assistantOpen ? '' : notice}
+          onDismissNotice={dismissNotice}
+        />
+        <Assistant
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          detail={assistantDetail}
+          getSimulationContext={getSimulationContext}
+        />
         <Drawer
           open={helpOpen}
           onOpenChange={setHelpOpen}
@@ -515,15 +511,10 @@ function Shell() {
 function AuthenticatedRoutes() {
   const { user, booting, toasts } = useApp();
 
-  const navigate = useNavigate();
-
   const location = useLocation();
 
-  useEffect(() => {
-    if (!booting && user && new URLSearchParams(location.search).get('guest') === '1') {
-      navigate('/simulation', { replace: true });
-    }
-  }, [booting, user, location.search, navigate]);
+  // QR은 기존 게스트 세션이 있어도 입장 화면부터 보여준다. 세션 자체는 유지한다.
+  const entryRequested = new URLSearchParams(location.search).get('guest') === '1';
 
   return (
     <>
@@ -535,7 +526,7 @@ function AuthenticatedRoutes() {
           <Brand />
           <LoaderCircle className="spin" size={25} />
         </div>
-      ) : !user ? (
+      ) : !user || entryRequested ? (
         <LoginPage />
       ) : (
         <Routes>

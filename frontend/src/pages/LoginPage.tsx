@@ -21,7 +21,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 export default function LoginPage() {
-  const { login, enterDemo, enterGuest } = useApp();
+  const { user, login, enterDemo, enterGuest } = useApp();
 
   const navigate = useNavigate();
 
@@ -37,6 +37,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(username.trim(), password);
+      navigate('/', { replace: true });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -46,11 +47,15 @@ export default function LoginPage() {
 
   async function visitAsGuest() {
     if (busy) return;
+    if (user && !user.is_guest) {
+      navigate('/', { replace: true });
+      return;
+    }
     setError('');
     setBusy(true);
     try {
       await enterGuest();
-      navigate('/simulation', { replace: true });
+      navigate('/', { replace: true });
     } catch (failure) {
       setError(errorMessage(failure));
     } finally {
@@ -145,7 +150,7 @@ export default function LoginPage() {
           </div>
           <button className="button preview-button" onClick={visitAsGuest} disabled={busy}>
             {busy ? <LoaderCircle className="spin" size={15} /> : <UserRound size={15} />}
-            게스트로 둘러보기
+            {user && !user.is_guest ? '현재 계정으로 계속' : '게스트로 입장'}
             <ArrowRight size={15} />
           </button>
           <button className="button preview-button" onClick={enterDemo} disabled={busy}>
