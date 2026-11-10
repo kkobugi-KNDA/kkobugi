@@ -1,6 +1,63 @@
 .simulation-page {
   display: grid;
   gap: 14px;
+  min-width: 0;
+}
+.simulation-panel-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.simulation-panel-toolbar button,
+.simulation-panel-heading button,
+.simulation-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--theme-text-strong, #243545);
+  background: var(--theme-surface, #fff);
+  border: 1px solid var(--theme-border, #cbd8e3);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.simulation-panel-toolbar button[aria-expanded='true'] {
+  color: var(--theme-primary, #245d8f);
+  border-color: var(--theme-primary-border, #7ca9cf);
+  background: var(--theme-primary-surface, #e7f0f7);
+}
+.simulation-panel-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.simulation-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.simulation-panel-heading button,
+.simulation-panel-close {
+  flex: 0 0 44px;
+  padding: 8px;
+}
+.simulation-graph-chart {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.simulation-workspace.controls-collapsed .pump-simulation-main {
+  left: 0;
+}
+.simulation-workspace.controls-collapsed .simulation-live-status,
+.simulation-workspace.controls-collapsed .simulation-alert,
+.simulation-workspace.controls-collapsed .simulation-graph {
+  left: 24px;
 }
 .simulation-heading {
   display: flex;
@@ -319,40 +376,175 @@
     left: 290px;
   }
 }
-@media (max-width: 760px) {
-  .simulation-workspace {
-    min-height: 1200px;
-    height: auto;
+/* 작은 화면에서는 패널이 캔버스를 덮지 않고 3D 아래 문서 흐름에 놓인다. */
+@media (max-width: 900px), (max-width: 1100px) and (max-height: 500px) {
+  .simulation-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 5px;
   }
-  .simulation-controls {
+  .simulation-heading p {
+    display: block;
+    font-size: 11px;
+  }
+  .simulation-panel-toolbar {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .simulation-panel-toolbar button {
+    min-width: 0;
+    padding: 7px 3px;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .simulation-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .simulation-workspace > .pump-simulation-stage {
+    position: relative;
+    inset: auto;
+    grid-row: 2;
+    min-width: 0;
+    min-height: 0;
+    height: clamp(320px, 64dvh, 520px);
+  }
+  .simulation-workspace .simulation-scene-loading {
+    position: relative;
+    grid-row: 2;
+    min-height: 320px;
+  }
+  .simulation-workspace .pump-simulation-main,
+  .simulation-workspace.controls-collapsed .pump-simulation-main {
+    inset: 0 0 135px;
+  }
+  .simulation-workspace .pump-simulation-parts {
+    inset: auto 8px 8px;
+    width: auto;
+    height: 120px;
+    gap: 5px;
+  }
+  .simulation-workspace .pump-simulation-part {
+    min-width: 0;
+    min-height: 90px;
+    padding: 8px;
+  }
+  .simulation-workspace .pump-simulation-part strong {
+    font-size: 11px;
+  }
+  .simulation-workspace .pump-simulation-caption {
     top: 12px;
     left: 12px;
-    width: 225px;
-    max-height: 650px;
+  }
+  .simulation-workspace .pump-simulation-caption h2 {
+    font-size: 18px;
+  }
+  .simulation-workspace .pump-simulation-caption p,
+  .simulation-workspace .pump-simulation-controls,
+  .simulation-workspace .pump-simulation-part-link,
+  .simulation-part-connection {
+    display: none;
+  }
+  .simulation-workspace .pump-simulation-signal-note {
+    top: auto;
+    bottom: 142px;
+    left: 12px;
+    font-size: 10px;
+  }
+  .simulation-controls,
+  .simulation-part-panel,
+  .simulation-workspace .simulation-graph,
+  .simulation-workspace.has-part-panel .simulation-graph,
+  .simulation-workspace.controls-collapsed .simulation-graph,
+  .simulation-workspace .simulation-live-status,
+  .simulation-workspace.controls-collapsed .simulation-live-status,
+  .simulation-workspace .simulation-alert,
+  .simulation-workspace.controls-collapsed .simulation-alert {
+    box-sizing: border-box;
+    position: relative;
+    inset: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+  }
+  .simulation-controls {
+    grid-row: 4;
+    padding: 14px;
   }
   .simulation-live-status {
-    left: 253px;
-    right: 12px;
+    grid-row: 1;
+    padding: 10px 12px 0;
+    gap: 6px 10px;
+    font-size: 11px;
   }
   .simulation-live-status time {
     margin: 0;
+    width: 100%;
+    overflow-wrap: anywhere;
   }
   .simulation-alert {
-    top: 100px;
-    left: 253px;
-    right: 12px;
+    grid-row: 3;
+    gap: 8px;
   }
   .simulation-part-panel {
-    top: auto;
-    bottom: 280px;
-    left: 12px;
-    width: calc(100% - 24px);
-    max-height: 350px;
+    grid-row: 5;
+    padding: 14px;
   }
   .simulation-graph {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
+    grid-row: 6;
+  }
+  .simulation-graph header {
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    flex-wrap: wrap;
+  }
+  .simulation-graph header strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .simulation-graph header span {
+    flex: 1;
+  }
+  .simulation-graph .ax-live-chart {
+    min-width: 680px;
+  }
+  .simulation-page button,
+  .simulation-controls select,
+  .simulation-controls input:not([type='checkbox']),
+  .simulation-part-panel input {
+    min-height: 44px;
+  }
+  .simulation-controls select,
+  .simulation-controls input:not([type='checkbox']),
+  .simulation-part-panel input {
+    min-width: 0;
+    font-size: 16px;
+  }
+  .simulation-play-options button {
+    width: 44px;
+    flex: 0 0 44px;
+  }
+  .simulation-toggle {
+    min-height: 44px;
+  }
+  .simulation-part-tabs button {
+    min-width: 0;
+    font-size: 12px;
+  }
+  .simulation-controls p,
+  .simulation-part-panel p {
+    overflow-wrap: anywhere;
   }
 }
 

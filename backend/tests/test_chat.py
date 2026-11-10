@@ -20,7 +20,7 @@ def configured_chat_provider(monkeypatch, run_client):
     return provider(
         monkeypatch,
         run_client,
-        {"answer": "안녕하세요. 포석호예요. 점검 내용을 함께 확인해요.", "citation_ids": []},
+        {"answer": "안녕하세요. 포부기예요. 점검 내용을 함께 확인해요.", "citation_ids": []},
     )
 
 
@@ -53,7 +53,7 @@ def test_blank_cost_and_no_model_do_not_block_chat(run_client, costs):
     answer = response.json()
 
     assert "안녕하세요" in answer["answer"]
-    assert "포석호" in answer["answer"]
+    assert "포부기" in answer["answer"]
     assert answer["source_mode"] == "llm"
     assert answer["model_snapshot"] is None
     assert answer["report_message_id"] is None
@@ -530,3 +530,157 @@ def test_qualified_fault_explanations_are_not_mistaken_for_confirmed_faults(
     assert response.status_code == 201, response.text
     assert response.json()["source_mode"] == "llm"
     assert response.json()["answer"] == answer
+
+
+def sequence_provider(monkeypatch, client, payloads):
+    provider(monkeypatch, client)
+    calls = []
+
+    class SequenceClient:
+        def __init__(self, **options):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, **request):
+            calls.append(request)
+            payload = payloads[min(len(calls) - 1, len(payloads) - 1)]
+
+            return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("app.services.chat.httpx.Client", SequenceClient)
+    return calls
+
+
+def text_payload(text, stop_reason="end_turn"):
+    return {"content": [{"type": "text", "text": text}], "stop_reason": stop_reason}
+
+
+def test_second_turn_uses_structured_schema_and_preserves_conversation(run_client, monkeypatch):
+    calls = provider(
+        monkeypatch, run_client, {"answer": "두 번째 메시지도 확인했어요.", "citation_ids": []}
+    )
+
+    response = send_chat(
+        run_client,
+        "두 번째 채팅 보낸다",
+        history=[
+            {"role": "user", "content": "ㅇㄹㅇㄹ"},
+            {"role": "assistant", "content": "어떤 내용을 도와드릴까요?"},
+        ],
+    )
+
+    assert response.status_code == 201
+    request = calls[0]["json"]
+
+    schema = request["output_config"]["format"]["schema"]
+
+    assert request["output_config"]["format"]["type"] == "json_schema"
+    assert schema["required"] == ["answer", "citation_ids"]
+    assert schema["additionalProperties"] is False
+    assert request["output_config"]["effort"] == "medium"
+    assert [message["content"] for message in request["messages"][-3:]] == [
+        "ㅇㄹㅇㄹ",
+        "어떤 내용을 도와드릴까요?",
+        "두 번째 채팅 보낸다",
+    ]
+
+
+def test_fenced_json_is_validated_without_repeating_request(run_client, monkeypatch):
+    calls = sequence_provider(
+        monkeypatch,
+        run_client,
+        [text_payload('```json\n{"answer":"연결됐어요.","citation_ids":[]}\n```')],
+    )
+
+    response = send_chat(run_client)
+
+    assert response.status_code == 201
+    assert response.json()["answer"] == "연결됐어요."
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        text_payload("두 번째 메시지도 확인했어요."),
+        text_payload('{"answer":"잘린 답변', "max_tokens"),
+        text_payload('{"answer":"설명","citation_ids":["UNKNOWN"]}'),
+    ],
+)
+def test_invalid_format_is_retried_once_with_same_history(run_client, monkeypatch, first, caplog):
+    calls = sequence_provider(
+        monkeypatch,
+        run_client,
+        [first, text_payload('{"answer":"질문을 확인했어요.","citation_ids":[]}')],
+    )
+
+    response = send_chat(
+        run_client,
+        "두 번째 채팅 보낸다",
+        history=[
+            {"role": "user", "content": "첫 질문"},
+            {"role": "assistant", "content": "첫 답변"},
+        ],
+    )
+
+    assert response.status_code == 201
+    assert len(calls) == 2
+    assert calls[0]["json"]["messages"] == calls[1]["json"]["messages"]
+    assert calls[1]["json"]["max_tokens"] == (
+        2800 if first["stop_reason"] == "max_tokens" else 1400
+    )
+    assert "첫 질문" not in caplog.text
+    assert "test-only-chat-secret" not in caplog.text
+    assert "stop_reason=" in caplog.text
+
+
+def test_format_retry_is_bounded_and_does_not_invent_an_answer(run_client, monkeypatch):
+    calls = sequence_provider(monkeypatch, run_client, [text_payload("still not json")])
+
+    response = send_chat(run_client)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "AI_INVALID_RESPONSE"
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "text, stop_reason",
+    [
+        ('{"answer":"test-only-chat-secret","citation_ids":[]}', "end_turn"),
+        ('{"answer":"답변할 수 없어요.","citation_ids":[]}', "refusal"),
+        ('{"answer":"지금 고장이 났습니다. 즉시 교체하세요.","citation_ids":[]}', "end_turn"),
+    ],
+)
+def test_secret_refusal_and_unsafe_claims_are_not_retried_or_logged(
+    run_client,
+    monkeypatch,
+    text,
+    stop_reason,
+    caplog,
+):
+    calls = sequence_provider(monkeypatch, run_client, [text_payload(text, stop_reason)])
+
+    response = send_chat(run_client)
+
+    assert response.status_code == 502
+    assert len(calls) == 1
+    assert text not in caplog.text
+    assert "test-only-chat-secret" not in caplog.text
+    assert "test-only-chat-secret" not in response.text
+
+
+def test_negated_replacement_guidance_is_not_a_replacement_order(run_client, monkeypatch):
+    provider(
+        monkeypatch,
+        run_client,
+        {"answer": "즉시 교체할 필요는 없어요. 원인 확인이 먼저예요.", "citation_ids": []},
+    )
+    response = send_chat(run_client)
+
+    assert response.status_code == 201

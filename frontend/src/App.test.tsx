@@ -17,7 +17,7 @@ vi.mock('./components/LoginVideo', () => ({
 }));
 vi.mock('./components/PetChatModal', () => ({
   default: ({ open, children }: { open: boolean; children: ReactNode }) =>
-    open ? <section aria-label="열린 포석호 대화">{children}</section> : null,
+    open ? <section aria-label="열린 포부기 대화">{children}</section> : null,
 }));
 vi.mock('./pages/SimulationPage', () => ({
   default: () => <h1>시뮬레이션 화면</h1>,
@@ -100,7 +100,7 @@ describe('workspace navigation and authentication boundaries', () => {
         }),
       );
     });
-    expect(screen.getByRole('textbox', { name: '포석호에게 질문' })).toHaveValue(
+    expect(screen.getByRole('textbox', { name: '포부기에게 질문' })).toHaveValue(
       '최종 확인 구간에 비정상이 없으면 어떻게 해?',
     );
   });

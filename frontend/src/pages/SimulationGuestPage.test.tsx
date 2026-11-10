@@ -34,10 +34,57 @@ vi.mock('../components/PumpSimulationScene', () => ({
   ),
 }));
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('기존 시뮬레이션의 관람객 데이터 공급원', () => {
-  it('같은 화면에서 재생·부품 견적·포석호를 연결하고 팀 API는 호출하지 않는다', async () => {
+  it('모바일은 설정을 접고 시작하며 패널을 닫아도 재생과 입력 상태를 유지한다', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    );
+    render(
+      <MemoryRouter>
+        <SimulationPage />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId('scene');
+    expect(
+      screen.queryByRole('complementary', { name: '시뮬레이션 옵션' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '재생 설정' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '실시간 시뮬레이션 시작' }));
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('10 / 360행');
+    fireEvent.click(screen.getByRole('button', { name: '재생 설정' }));
+    expect(screen.getByLabelText('시뮬레이션 재생 속도')).toHaveValue('10');
+    fireEvent.click(screen.getByRole('button', { name: '재생 설정 접기' }));
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('20 / 360행');
+    fireEvent.click(screen.getByRole('button', { name: '부품' }));
+    fireEvent.click(screen.getByRole('button', { name: '임펠러' }));
+    fireEvent.change(screen.getByLabelText('시뮬레이션 부품 견적'), { target: { value: '70000' } });
+    fireEvent.click(screen.getByRole('button', { name: '부품 설정 접기' }));
+    fireEvent.click(screen.getByRole('button', { name: '부품' }));
+    expect(screen.getByLabelText('시뮬레이션 부품 견적')).toHaveValue(70000);
+    fireEvent.click(screen.getByRole('button', { name: '그래프' }));
+    expect(screen.getByLabelText('시뮬레이션 그래프')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '그래프 접기' }));
+    expect(screen.queryByLabelText('시뮬레이션 그래프')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '시뮬레이션 일시 정지' })).toBeEnabled();
+  });
+
+  it('같은 화면에서 재생·부품 견적·포부기를 연결하고 팀 API는 호출하지 않는다', async () => {
     const opened = vi.fn();
 
     const statuses = vi.fn();

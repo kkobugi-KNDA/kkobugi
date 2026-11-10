@@ -331,7 +331,7 @@ export default function ChatConversation({
 
   return (
     <div className="chat-conversation">
-      <div className="chat-dataset-context" aria-label="포석호가 참조하는 데이터">
+      <div className="chat-dataset-context" aria-label="포부기가 참조하는 데이터">
         <FileText size={15} aria-hidden="true" />
         <span>
           {isGuest
@@ -348,7 +348,7 @@ export default function ChatConversation({
         ref={transcriptRef}
         className="chat-transcript"
         role="log"
-        aria-label="포석호와 대화"
+        aria-label="포부기와 대화"
         aria-live="polite"
         aria-relevant="additions"
       >
@@ -366,9 +366,9 @@ export default function ChatConversation({
           <article
             key={entry.id}
             className={`chat-message chat-message-${entry.role}`}
-            aria-label={entry.role === 'user' ? '내 질문' : '포석호 답변'}
+            aria-label={entry.role === 'user' ? '내 질문' : '포부기 답변'}
           >
-            <span className="chat-speaker">{entry.role === 'user' ? '나' : '포석호'}</span>
+            <span className="chat-speaker">{entry.role === 'user' ? '나' : '포부기'}</span>
             <p>{entry.content}</p>
             {entry.reply && (
               <>
@@ -463,7 +463,7 @@ export default function ChatConversation({
               <p>{pendingQuestion}</p>
             </article>
             <div className="chat-pending" role="status">
-              <LoaderCircle size={17} className="spin" /> 포석호가 근거를 확인하고 있어요.
+              <LoaderCircle size={17} className="spin" /> 포부기가 근거를 확인하고 있어요.
             </div>
           </>
         )}
@@ -531,7 +531,7 @@ export default function ChatConversation({
         )}
         <div className="chat-compose-row">
           <textarea
-            aria-label="포석호에게 질문"
+            aria-label="포부기에게 질문"
             value={question}
             maxLength={3000}
             onChange={(event) => setQuestion(event.target.value)}

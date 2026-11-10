@@ -274,17 +274,47 @@
   margin: 5px 1px 0;
 }
 @media (max-width: 600px) {
+  .chat-dataset-context {
+    padding: 8px 12px;
+    gap: 4px;
+    font-size: 11px;
+  }
+  .chat-dataset-context small {
+    margin-left: 0;
+  }
   .chat-transcript {
     padding: 16px 13px;
   }
   .chat-composer {
     padding: 10px 12px 8px;
+    max-height: 55%;
+    overflow-y: auto;
   }
   .chat-message {
     max-width: 95%;
-    font-size: 13px;
+    font-size: 14px;
+    padding: 12px;
   }
   .chat-optional-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .chat-optional-grid input,
+  .chat-optional-grid textarea,
+  .chat-compose-row textarea {
+    font-size: 16px;
+  }
+  .chat-compose-row textarea {
+    max-height: 100px;
+  }
+  .chat-compose-row button {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+  .chat-input-hint {
+    display: none;
+  }
+  .chat-sources a {
+    overflow-wrap: anywhere;
   }
 }

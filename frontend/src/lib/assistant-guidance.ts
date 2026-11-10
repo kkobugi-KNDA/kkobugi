@@ -32,7 +32,7 @@ export function findVisibleAssistantGuide(viewport: { width: number; height: num
     if (!guide.slot.isConnected) continue;
     const bounds = guide.slot.getBoundingClientRect();
 
-    // 실제 내용 영역에서 잘린 슬롯은 제외한다. 헤더 위로 포석호가 따라가지 않게 한다.
+    // 실제 내용 영역에서 잘린 슬롯은 제외한다. 헤더 위로 포부기가 따라가지 않게 한다.
     const scrollBounds = guide.slot.closest('.main-scroll')?.getBoundingClientRect();
 
     const visibleLeft = Math.max(18, scrollBounds?.left ?? 0);

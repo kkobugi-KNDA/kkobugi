@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
 }));
 vi.mock('../context/AppContext', () => ({ useApp: mocks.useApp }));
+vi.mock('../context/ExpertiseContext', () => ({ useExpertise: () => ({ isExpert: false }) }));
 vi.mock('../lib/api', () => ({
   api: mocks.api,
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : '요청 오류'),
@@ -68,16 +69,17 @@ describe('CSV 등록과 검사 결과', () => {
     await user.click(screen.getAllByRole('button', { name: 'CSV 등록' })[0]);
     const modal = await screen.findByRole('dialog', { name: 'CSV 등록' });
     const file = new File(
-      ['measured_at,sensor_04,LABEL\n2018-04-01T00:00:00,12,0\n'],
+      ['measured_at,sensor_04,LABEL\n2018-04-01T00:00:00,12,0\n2018-04-01T00:01:00,15,1\n'],
       'prepared.csv',
       { type: 'text/csv' },
     );
     await user.upload(within(modal).getByLabelText('등록할 CSV 파일'), file);
-    await user.clear(within(modal).getByLabelText('시각 열'));
-    await user.type(within(modal).getByLabelText('시각 열'), 'measured_at');
-    await user.clear(within(modal).getByLabelText('라벨 열'));
-    await user.type(within(modal).getByLabelText('라벨 열'), 'LABEL');
-    await user.click(within(modal).getByRole('button', { name: 'Normal=0 / Abnormal=1 적용' }));
+    await waitFor(() =>
+      expect(within(modal).getByLabelText('시간이 기록된 열')).toHaveValue('measured_at'),
+    );
+    expect(within(modal).getByLabelText('정상·이상 판정이 있는 열')).toHaveValue('LABEL');
+    expect(within(modal).getByLabelText('정상으로 표시된 값')).toHaveValue('0');
+    expect(within(modal).getByLabelText('이상으로 표시된 값')).toHaveValue('1');
     expect(mocks.api.upload).not.toHaveBeenCalled();
     await user.click(within(modal).getByRole('button', { name: '등록하고 검사' }));
     await waitFor(() => expect(mocks.api.upload).toHaveBeenCalledTimes(1));
@@ -105,10 +107,16 @@ describe('CSV 등록과 검사 결과', () => {
         type: 'text/csv',
       }),
     );
+    await waitFor(() =>
+      expect(within(modal).getByLabelText('시간이 기록된 열')).toHaveValue('timestamp'),
+    );
+    await user.type(within(modal).getByLabelText('정상·이상 판정이 있는 열'), 'LABEL');
+    await user.type(within(modal).getByLabelText('정상으로 표시된 값'), 'normal');
+    await user.type(within(modal).getByLabelText('이상으로 표시된 값'), 'abnormal');
     await user.click(within(modal).getByRole('button', { name: '등록하고 검사' }));
     expect(await within(modal).findByText('필수 열 LABEL이 없어요.')).toBeInTheDocument();
     expect(within(modal).getByText('missing-label.csv')).toBeInTheDocument();
-    expect(within(modal).getByLabelText('시각 열')).toHaveValue('timestamp');
+    expect(within(modal).getByLabelText('시간이 기록된 열')).toHaveValue('timestamp');
     expect(mocks.selectDataset).not.toHaveBeenCalled();
     expect(mocks.registerDataset).not.toHaveBeenCalled();
     expect(mocks.refreshDatasets).not.toHaveBeenCalled();

@@ -552,6 +552,32 @@
 .dm-upload-modal {
   width: min(610px, calc(100vw - 32px)) !important;
 }
+.dm-upload-modal .field,
+.dm-upload-modal .input {
+  min-width: 0;
+  max-width: 100%;
+}
+.dm-mapping-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dm-mapping-candidates .button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.dm-mapping-guide {
+  min-width: 0;
+}
+.dm-mapping-guide .assistant-guide-bubble {
+  overflow-wrap: anywhere;
+}
+/* 등록창의 안내 자리로 온 기존 포부기만 모달 위에 표시한다. */
+.assistant-pet[data-guide-id='csv-upload-mapping'] {
+  z-index: 102;
+  pointer-events: none;
+}
 .dm-dropzone {
   display: flex;
   flex-direction: column;

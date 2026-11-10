@@ -124,11 +124,28 @@
 }
 @media (max-width: 600px) {
   .pet-chat-dialog {
-    width: calc(100vw - 16px);
-    height: calc(100dvh - 18px);
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
   .pet-chat-header {
-    padding: 14px;
+    padding: 10px;
+    gap: 8px;
+  }
+  .pet-chat-header > div {
+    min-width: 0;
+  }
+  .pet-chat-header h2 {
+    font-size: 16px;
+  }
+  .pet-chat-avatar {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+  .pet-chat-close {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
   }
   .pet-chat-header p {
     font-size: 11px;

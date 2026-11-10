@@ -13,6 +13,7 @@ from app.config import Settings
 from app.models import Dataset
 from app.services import datasets as dataset_service
 from app.services import modeling
+from app.services.csv_format import detect_csv_delimiter
 
 BATCH_ROWS = 1000
 
@@ -106,7 +107,7 @@ def load_index(dataset: Dataset, settings: Settings) -> SourceIndex:
         row_count = 0
 
         with source_path.open("r", encoding="utf-8-sig", newline="") as stream:
-            reader = csv.reader(stream, strict=True)
+            reader = csv.reader(stream, delimiter=detect_csv_delimiter(stream), strict=True)
 
             columns = next(reader)
 
@@ -157,7 +158,7 @@ def value_batches(
         if _stamp(source_path) != source.stamp:
             raise _error(409, "DATASET_CHANGED", "등록 당시와 CSV 내용이 다릅니다.")
         with source_path.open("r", encoding="utf-8-sig", newline="") as stream:
-            reader = csv.reader(stream, strict=True)
+            reader = csv.reader(stream, delimiter=detect_csv_delimiter(stream), strict=True)
 
             columns = next(reader)
 

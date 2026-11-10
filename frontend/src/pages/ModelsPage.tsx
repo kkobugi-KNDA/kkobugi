@@ -657,7 +657,7 @@ export default function ModelsPage() {
   activeAccount.current = `${mode}:${user?.id}`;
 
   const metadataNeedsReinspection = !!dataset?.inspection.channels.some((column) =>
-    ['machine_status', 'all_sensors_missing'].includes(column),
+    ['machine_status', 'all_sensors_missing', 'changepoint'].includes(column),
   );
 
   function clearPlan() {
@@ -1090,7 +1090,7 @@ export default function ModelsPage() {
                 const nextDatasetId = event.target.value;
 
                 setDatasetId(nextDatasetId);
-                // 학습 시작 전에도 포석호가 같은 CSV를 참조하도록 공유 선택을 맞춘다.
+                // 학습 시작 전에도 포부기가 같은 CSV를 참조하도록 공유 선택을 맞춘다.
                 setSelectedDatasetId(nextDatasetId || null);
               }}
             >

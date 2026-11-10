@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import AssistantGuide from './AssistantGuide';
 import { ASSISTANT_OPEN_EVENT } from '../lib/assistant-events';
 
-describe('포석호 공용 안내', () => {
+describe('포부기 공용 안내', () => {
   it('gives a guide without model context its own draft identity', () => {
     const opened = vi.fn();
 
@@ -16,7 +16,7 @@ describe('포석호 공용 안내', () => {
         question="CSV를 어떻게 확인할까?"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: '포석호에게 물어보기' }));
+    fireEvent.click(screen.getByRole('button', { name: '포부기에게 물어보기' }));
     expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({
       contextKey: 'guide:upload-help',
       initialQuestion: 'CSV를 어떻게 확인할까?',
@@ -44,7 +44,7 @@ describe('포석호 공용 안내', () => {
     expect(document.querySelector('.assistant-guide-pet-slot')).toBeInTheDocument();
     expect(document.querySelector('.assistant-pet')).not.toBeInTheDocument();
     expect(opened).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '포석호에게 물어보기' }));
+    fireEvent.click(screen.getByRole('button', { name: '포부기에게 물어보기' }));
     expect(opened).toHaveBeenCalledOnce();
     expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({
       runId: 'run-a',

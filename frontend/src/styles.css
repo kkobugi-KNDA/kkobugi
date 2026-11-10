@@ -26,7 +26,7 @@
 }
 body {
   margin: 0;
-  min-width: 360px;
+  min-width: 320px;
 }
 button,
 input,
@@ -2150,7 +2150,7 @@ textarea {
     font-size: 10px;
   }
 }
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .app-shell,
   .app-shell.sidebar-collapsed {
     display: block;
@@ -2437,6 +2437,96 @@ textarea {
     margin-top: 20px;
     margin-bottom: 22px;
     padding-top: 19px;
+  }
+}
+/* QR 방문자는 작은 화면에서도 확대 없이 입력하고 모든 메뉴에 접근한다. */
+@media (max-width: 900px) {
+  .app-main,
+  .main-scroll,
+  .page-stack,
+  .surface {
+    min-width: 0;
+  }
+  .topbar {
+    padding: env(safe-area-inset-top) 12px 0;
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .topbar-actions {
+    margin-left: auto;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .breadcrumb {
+    min-width: 0;
+  }
+  .breadcrumb strong {
+    font-size: 12px;
+  }
+  .main-scroll {
+    padding: 18px max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+  }
+  .workspace-footer {
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  }
+  .sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    max-width: calc(100vw - 48px);
+    overflow-y: auto;
+  }
+  .button,
+  .icon-button,
+  .account-trigger,
+  .nav-item {
+    min-height: 44px;
+  }
+  .icon-button {
+    min-width: 44px;
+  }
+  .input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .page-actions {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .login-main {
+    padding: calc(24px + env(safe-area-inset-top)) 22px 20px;
+  }
+  .login-form-wrap {
+    width: 100%;
+    padding: 28px 0;
+  }
+  .login-form-wrap h1 {
+    font-size: clamp(26px, 8vw, 34px);
+  }
+  .login-form .input {
+    font-size: 16px;
+    min-height: 46px;
+  }
+  .login-footer {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .overlay-heading,
+  .overlay-content,
+  .overlay-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .overlay-footer {
+    flex-wrap: wrap;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .toast-stack {
+    left: 12px;
+    right: 12px;
+    max-width: none;
   }
 }
 @media print {

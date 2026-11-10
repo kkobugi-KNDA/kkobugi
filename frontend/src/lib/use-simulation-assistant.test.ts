@@ -25,7 +25,7 @@ afterEach(() => {
   publishSimulationStatus(null);
 });
 
-describe('시뮬레이션에서만 10분마다 상태를 확인하는 포석호', () => {
+describe('시뮬레이션에서만 10분마다 상태를 확인하는 포부기', () => {
   it('관람 예시의 신호를 실제 학습 모델의 예측으로 설명하지 않는다', () => {
     publishSimulationStatus({ ...status, preview: true });
 

@@ -13,7 +13,7 @@ export interface AssistantGuideProps {
   question?: string;
 }
 
-/** 안내 끝에 자리를 마련하면, 전역 포석호 한 마리가 이 위치로 찾아온다. */
+/** 안내 끝에 자리를 마련하면, 전역 포부기 한 마리가 이 위치로 찾아온다. */
 export default function AssistantGuide({
   id,
   title,
@@ -37,7 +37,7 @@ export default function AssistantGuide({
   return (
     <aside className="assistant-guide" aria-labelledby={`assistant-guide-${id}`}>
       <div className="assistant-guide-bubble">
-        <span className="assistant-guide-speaker">포석호의 안내</span>
+        <span className="assistant-guide-speaker">포부기의 안내</span>
         <h3 id={`assistant-guide-${id}`}>{title}</h3>
         <p>{message}</p>
         {details.length > 0 && (
@@ -58,7 +58,7 @@ export default function AssistantGuide({
           className="assistant-guide-ask"
           onClick={() => openPetAssistant({ ...guideContext, initialQuestion: question })}
         >
-          <MessageCircle size={15} aria-hidden="true" /> 포석호에게 물어보기
+          <MessageCircle size={15} aria-hidden="true" /> 포부기에게 물어보기
         </button>
       </div>
       {/* 이미지는 복제하지 않는다. 기존 캐릭터가 이 빈 자리로 이동한다. */}

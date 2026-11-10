@@ -11,6 +11,7 @@ from app.models import Dataset
 from app.schemas.runs import AutoencoderOptions, NewRunCreate, XGBoostOptions
 from app.schemas.training import TrainingPlanRequest, TrainingPlanResponse
 from app.services import datasets as dataset_service
+from app.services.csv_format import detect_csv_delimiter
 from app.services.csv_inspection import METADATA_COLUMNS
 from app.services.modeling import _file_sha256
 
@@ -73,7 +74,9 @@ def make_training_plan(
     label_counts = {part: {"normal": 0, "abnormal": 0} for part in ("train", "validation", "test")}
 
     with source_path.open("r", encoding="utf-8-sig", newline="") as source_file:
-        for row_index, row in enumerate(csv.DictReader(source_file)):
+        for row_index, row in enumerate(
+            csv.DictReader(source_file, delimiter=detect_csv_delimiter(source_file))
+        ):
             part = (
                 "train"
                 if row_index < train_rows
