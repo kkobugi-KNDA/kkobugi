@@ -177,12 +177,27 @@ function Shell() {
 
   const [guideOpen, setGuideOpen] = useState(false);
 
+  const [pendingGuidePath, setPendingGuidePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pendingGuidePath === location.pathname && user?.is_guest) {
+      setGuideOpen(true);
+      setPendingGuidePath(null);
+    }
+  }, [pendingGuidePath, location.pathname, user?.is_guest]);
+
   function openGuestGuide(path = location.pathname) {
     setAssistantOpen(false);
     setHelpOpen(false);
     setMobileOpen(false);
-    if (path !== location.pathname) navigate(path);
-    setGuideOpen(true);
+    // 다른 메뉴의 안내는 경로 전환이 끝난 뒤 열어 이전 메뉴 설명이 잠깐 나타나지 않게 한다.
+    if (path !== location.pathname) {
+      setPendingGuidePath(path);
+      navigate(path);
+    } else {
+      setPendingGuidePath(null);
+      setGuideOpen(true);
+    }
   }
 
   function closeGuestGuide() {
@@ -217,6 +232,7 @@ function Shell() {
     setAssistantOpen(false);
     setAssistantDetail({});
     setGuideOpen(false);
+    setPendingGuidePath(null);
   }, [user?.id, mode]);
 
   // 화면이나 선택 CSV가 바뀌면 전에 열었던 실행·부품 문맥을 가져오지 않는다.
