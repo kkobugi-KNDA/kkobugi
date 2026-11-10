@@ -346,10 +346,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (accountVersion.current !== requestAccount) return;
     sessionStorage.removeItem('kkobugi:preview');
     setMode(result.user.is_guest ? 'demo' : 'live');
-    setSelectedDatasetId(null);
-    setSelectedRunId(null);
-    setDatasets([]);
-    setRuns([]);
+    // 같은 게스트 세션으로 QR에 다시 입장해도 예시 목록을 즉시 유지한다.
+    // user ID/mode가 같으면 데이터 로딩 effect가 다시 실행되지 않는다.
+    if (result.user.is_guest) {
+      setSelectedDatasetId(DEMO_DATASET_DETAIL.dataset.id);
+      setSelectedRunId(DEMO_RUN_DETAIL.run.id);
+      setDatasets([DEMO_DATASET_DETAIL.dataset]);
+      setRuns([DEMO_RUN_DETAIL.run]);
+    }
     setUser(result.user);
     setBooting(false);
   }, [invalidateAccount]);

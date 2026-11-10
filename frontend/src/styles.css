@@ -2529,6 +2529,67 @@ textarea {
     max-width: none;
   }
 }
+.guest-guide-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 13px;
+  border: 1px solid var(--theme-primary-border);
+  border-radius: 8px;
+  color: var(--theme-primary);
+  background: var(--theme-primary-surface);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.guest-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.guest-nav-row .nav-item {
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+  padding-inline: 9px;
+  white-space: normal;
+}
+.guest-nav-row .nav-item svg {
+  flex-shrink: 0;
+}
+.guest-nav-row .nav-chevron {
+  display: none;
+}
+.guest-nav-guide {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--theme-text-secondary);
+}
+.guest-nav-guide:hover {
+  background: var(--theme-primary-surface);
+  color: var(--theme-primary);
+}
+@media (max-width: 900px) {
+  .guest-nav-guide {
+    width: 44px;
+  }
+  .guest-guide-trigger {
+    font-size: 12px;
+    padding-inline: 10px;
+  }
+  .app-shell:has(.guest-guide-trigger) .notification-button,
+  .app-shell:has(.guest-guide-trigger) .topbar-divider {
+    display: none;
+  }
+}
 @media print {
   .sidebar,
   .topbar,

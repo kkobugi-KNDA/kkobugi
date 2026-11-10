@@ -77,7 +77,7 @@ export default function DashboardPage() {
           데이터 등록
         </Link>
       </PageHeader>
-      <section className="dashboard-stats">
+      <section className="dashboard-stats" data-tour="dashboard-stats">
         {[
           {
             label: '등록한 데이터',
@@ -128,7 +128,7 @@ export default function DashboardPage() {
         ))}
       </section>
       <div className="dashboard-main-grid">
-        <section className="surface dashboard-data">
+        <section className="surface dashboard-data" data-tour="dashboard-data">
           <header className="section-heading">
             <div>
               <span className="eyebrow">CURRENT DATA</span>

@@ -1083,6 +1083,7 @@ export default function ModelsPage() {
           <Field label="학습할 데이터셋" htmlFor="training-dataset">
             <select
               id="training-dataset"
+              data-tour="training-dataset"
               className="select"
               value={datasetId}
               disabled={creating}
@@ -1171,7 +1172,12 @@ export default function ModelsPage() {
               <p>한 번에 하나만 학습해요.</p>
             </div>
           </div>
-          <div className="training-models" role="radiogroup" aria-label="학습할 모델">
+          <div
+            className="training-models"
+            data-tour="training-model"
+            role="radiogroup"
+            aria-label="학습할 모델"
+          >
             {(['xgboost', 'autoencoder'] as const).map((key) => (
               <label className={modelKey === key ? 'selected' : ''} key={key}>
                 <input
@@ -1213,7 +1219,7 @@ export default function ModelsPage() {
               </p>
             </div>
           </div>
-          <div className="training-plan-row">
+          <div className="training-plan-row" data-tour="training-split">
             <Field
               label={isExpert ? 'Train : Valid : Test' : '데이터를 나누는 비율'}
               htmlFor="training-ratio"

@@ -35,6 +35,22 @@ beforeEach(() => {
 });
 
 describe('QR 게스트 세션', () => {
+  it('같은 게스트가 QR로 다시 들어와도 안내용 데이터와 모델을 유지한다', async () => {
+    mocks.me.mockResolvedValue({
+      user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+    });
+
+    const hook = renderHook(() => useApp(), { wrapper: AppProvider });
+
+    await waitFor(() => expect(hook.result.current.datasets).toHaveLength(1));
+    await act(() => hook.result.current.enterGuest());
+    expect(hook.result.current.datasets).toEqual([DEMO_DATASET_DETAIL.dataset]);
+    expect(hook.result.current.runs).toEqual([DEMO_RUN_DETAIL.run]);
+    expect(hook.result.current.selectedDatasetId).toBe(DEMO_DATASET_DETAIL.dataset.id);
+    expect(mocks.datasets).not.toHaveBeenCalled();
+    expect(mocks.runs).not.toHaveBeenCalled();
+  });
+
   it('guest=1은 자동 입장하지 않고 명시적인 게스트 입장 후 세션을 만든다', async () => {
     window.history.replaceState({}, '', '/?guest=1');
     mocks.me.mockRejectedValue(new Error('no session'));

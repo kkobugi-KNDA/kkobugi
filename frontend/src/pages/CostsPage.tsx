@@ -123,7 +123,7 @@ export default function CostsPage() {
         먼저 모델 결과와 현장 관찰을 확인하세요. 비용은 사용자가 입력한 가정으로 계산하며, 고장
         확률이나 실제 절감액을 예측하지 않습니다. <Link to="/models">모델 학습 보기 ↗</Link>
       </Notice>
-      <section className="surface rv-cost-period">
+      <section className="surface rv-cost-period" data-tour="costs-period">
         <div>
           <h2>비교할 기간</h2>
           <p>두 시나리오에 같은 기간과 범위를 적용해주세요.</p>
@@ -137,11 +137,11 @@ export default function CostsPage() {
           onChange={(e) => setPeriod(e.target.value)}
         />
       </section>
-      <div className="rv-cost-grid">
+      <div className="rv-cost-grid" data-tour="costs-inputs">
         {renderScenario(a, setA, aTitle, setATitle, 'A')}
         {renderScenario(b, setB, bTitle, setBTitle, 'B')}
       </div>
-      <section className="surface rv-cost-comparison">
+      <section className="surface rv-cost-comparison" data-tour="costs-result">
         <div className="rv-comparison-icon">
           {difference == null || difference === 0 ? (
             <Equal size={24} />
