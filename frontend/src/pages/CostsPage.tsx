@@ -6,13 +6,26 @@ import './review.css';
 
 type Key = 'inspection' | 'parts' | 'labor' | 'downtime' | 'hourlyLoss';
 type Scenario = Record<Key, string>;
-const blank = (): Scenario => ({
-  inspection: '',
-  parts: '',
-  labor: '',
-  downtime: '',
-  hourlyLoss: '',
-});
+
+// 실제 견적이 아닌 비교 체험용 가정입니다. 두 대응안의 시간당 손실은 같게 둡니다.
+const plannedExample: Scenario = {
+  inspection: '200000',
+  parts: '500000',
+  labor: '300000',
+  downtime: '2',
+  hourlyLoss: '500000',
+};
+
+const emergencyExample: Scenario = {
+  inspection: '200000',
+  parts: '500000',
+  labor: '500000',
+  downtime: '6',
+  hourlyLoss: '500000',
+};
+
+const examplePeriod = '향후 30일 · 펌프 1대';
+
 const fields: { key: Key; label: string; unit: string; hint: string }[] = [
   { key: 'inspection', label: '점검비', unit: '원', hint: '진단·점검에 드는 비용' },
   { key: 'parts', label: '부품비', unit: '원', hint: '교체할 부품의 비용' },
@@ -43,11 +56,17 @@ const money = (value: number | null) =>
   value == null ? '—' : `${Math.round(value).toLocaleString('ko-KR')}원`;
 
 export default function CostsPage() {
-  const [a, setA] = useState<Scenario>(blank),
-    [b, setB] = useState<Scenario>(blank),
-    [period, setPeriod] = useState('');
-  const [aTitle, setATitle] = useState('지금 점검'),
-    [bTitle, setBTitle] = useState('예정 시점 점검');
+  // 첫 진입 때만 예시를 채웁니다. 입력 중인 값은 다시 렌더링해도 유지합니다.
+  const [a, setA] = useState<Scenario>(plannedExample);
+
+  const [b, setB] = useState<Scenario>(emergencyExample);
+
+  const [period, setPeriod] = useState(examplePeriod);
+
+  const [aTitle, setATitle] = useState('계획 점검·교체');
+
+  const [bTitle, setBTitle] = useState('긴급 점검·교체');
+
   const totalA = useMemo(() => scenarioTotal(a), [a]),
     totalB = useMemo(() => scenarioTotal(b), [b]);
   const difference = totalA != null && totalB != null ? totalB - totalA : null;
@@ -110,15 +129,21 @@ export default function CostsPage() {
         <button
           className="button secondary"
           onClick={() => {
-            setA(blank());
-            setB(blank());
-            setPeriod('');
+            setA({ ...plannedExample });
+            setB({ ...emergencyExample });
+            setPeriod(examplePeriod);
+            setATitle('계획 점검·교체');
+            setBTitle('긴급 점검·교체');
           }}
         >
           <RotateCcw size={16} />
-          입력 초기화
+          예시값 복원
         </button>
       </PageHeader>
+      <Notice>
+        <strong>시뮬레이션 예시 · 실제 견적 아님</strong> 처음에는 계획 점검 2시간과 긴급 점검
+        6시간을 가정한 금액을 채워두었어요. 기간과 금액을 바꾸면 비교 결과도 바로 바뀝니다.
+      </Notice>
       <Notice>
         먼저 모델 결과와 현장 관찰을 확인하세요. 비용은 사용자가 입력한 가정으로 계산하며, 고장
         확률이나 실제 절감액을 예측하지 않습니다. <Link to="/models">모델 학습 보기 ↗</Link>
