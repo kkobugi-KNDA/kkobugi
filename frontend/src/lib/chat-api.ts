@@ -17,6 +17,7 @@ export interface SimulationChatContext {
 
 export interface ChatRequest {
   question: string;
+  dataset_id?: string | null;
   history?: ChatHistoryMessage[];
   run_id?: string | null;
   model_key?: string | null;

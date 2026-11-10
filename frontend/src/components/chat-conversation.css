@@ -6,6 +6,23 @@
   color: var(--theme-text-strong, #253b4d);
   overflow: hidden;
 }
+.chat-dataset-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--theme-border, #dce5ed);
+  color: var(--theme-text-secondary, #667e90);
+  font-size: 12px;
+}
+.chat-dataset-context span {
+  overflow-wrap: anywhere;
+}
+.chat-dataset-context small {
+  margin-left: auto;
+}
 .chat-transcript {
   min-height: 0;
   flex: 1;

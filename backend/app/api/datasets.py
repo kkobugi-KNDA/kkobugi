@@ -96,8 +96,26 @@ def list_datasets(
     current_user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    deleted: Annotated[bool, Query(description="휴지통의 CSV만 조회")] = False,
 ) -> DatasetList:
-    return dataset_service.list_datasets(database_session, current_user.id, limit, offset)
+    return dataset_service.list_datasets(
+        database_session, current_user.id, limit, offset, deleted=deleted
+    )
+
+
+@router.delete("/{dataset_id}", status_code=204, summary="CSV를 복원 가능한 휴지통으로 이동")
+def delete_dataset(
+    dataset_id: str, database_session: DatabaseSession, current_user: CurrentUser
+) -> Response:
+    dataset_service.delete_dataset(database_session, dataset_id, current_user.id)
+    return Response(status_code=204)
+
+
+@router.post("/{dataset_id}/restore", response_model=DatasetDetail, summary="휴지통의 CSV 복원")
+def restore_dataset(
+    dataset_id: str, database_session: DatabaseSession, current_user: CurrentUser
+) -> DatasetDetail:
+    return dataset_service.restore_dataset(database_session, dataset_id, current_user.id)
 
 
 @router.get("/{dataset_id}", response_model=DatasetDetail, summary="내 CSV 정보와 검사 결과")

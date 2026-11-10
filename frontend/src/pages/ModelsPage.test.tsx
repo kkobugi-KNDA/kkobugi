@@ -88,6 +88,19 @@ beforeEach(() => {
 });
 
 describe('한 모델씩 학습하는 Pro·Pro+ 흐름', () => {
+  it('학습 시작 전 CSV 선택 변경을 포석호가 쓰는 공유 선택에도 반영한다', async () => {
+    const workspace = context();
+
+    workspace.datasets.push({ ...DEMO_DATASET_DETAIL.dataset, id: 'new-csv', filename: 'new.csv' });
+    mocks.useApp.mockReturnValue(workspace);
+    mount();
+    const select = await screen.findByRole('combobox', { name: '학습할 데이터셋' });
+
+    fireEvent.change(select, { target: { value: 'new-csv' } });
+    expect(workspace.setSelectedDatasetId).toHaveBeenCalledWith('new-csv');
+    expect(mocks.api.createRun).not.toHaveBeenCalled();
+  });
+
   it('분할 안내에서 질문을 열 때 과거 모델 대신 현재 CSV의 분포를 연결한다', async () => {
     mocks.prepareTraining.mockResolvedValue({
       ...plan(),

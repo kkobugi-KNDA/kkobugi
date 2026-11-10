@@ -557,6 +557,8 @@ function TrainingPlanGuide({
       ]}
       context={{
         // 아직 학습하지 않은 설정이다. 아래에 표시된 과거 실행을 잘못 연결하지 않는다.
+        datasetId: plan.configuration.dataset_id,
+        datasetName: dataset?.dataset.filename,
         runId: null,
         modelKey: null,
         contextKey: `training-plan:${plan.configuration.dataset_id}:${plan.configuration.models.join(',')}:${plan.configuration.train_end}:${plan.configuration.validation_end}`,
@@ -666,8 +668,12 @@ export default function ModelsPage() {
   }
 
   useEffect(() => {
-    if (!datasetId) setDatasetId(selectedDatasetId || datasets[0]?.id || '');
-  }, [datasetId, selectedDatasetId, datasets]);
+    if (datasetId) return;
+    const nextDatasetId = selectedDatasetId || datasets[0]?.id || '';
+
+    setDatasetId(nextDatasetId);
+    if (nextDatasetId) setSelectedDatasetId(nextDatasetId);
+  }, [datasetId, selectedDatasetId, datasets, setSelectedDatasetId]);
 
   useEffect(() => {
     // CSV·계정이 바뀌면 이전 채널과 자동 설정을 다음 자료에 적용하지 않는다.
@@ -1080,7 +1086,13 @@ export default function ModelsPage() {
               className="select"
               value={datasetId}
               disabled={creating}
-              onChange={(event) => setDatasetId(event.target.value)}
+              onChange={(event) => {
+                const nextDatasetId = event.target.value;
+
+                setDatasetId(nextDatasetId);
+                // 학습 시작 전에도 포석호가 같은 CSV를 참조하도록 공유 선택을 맞춘다.
+                setSelectedDatasetId(nextDatasetId || null);
+              }}
             >
               <option value="" disabled>
                 CSV를 선택해주세요
@@ -1613,6 +1625,8 @@ export default function ModelsPage() {
                     isExpert={isExpert}
                     dataset={resultDataset}
                     assistantContext={{
+                      datasetId: detail.run.dataset_id,
+                      datasetName: resultDataset?.dataset.filename,
                       runId: detail.run.id,
                       modelKey: viewModel || null,
                       split: finalMetrics ? 'test' : 'validation',
