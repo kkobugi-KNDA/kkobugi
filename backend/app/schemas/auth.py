@@ -30,6 +30,8 @@ class PublicUser(BaseModel):
 
     display_name: str
 
+    is_guest: bool = False
+
 
 class AuthResponse(BaseModel):
     user: PublicUser

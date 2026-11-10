@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -40,7 +40,47 @@ CurrentSession = Annotated[auth_service.AuthenticatedSession, Depends(get_curren
 def get_current_user(current_session: CurrentSession) -> User:
     """로그인이 필요한 API에 Depends(get_current_user)로 연결한다."""
 
+    if current_session.user.is_guest:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "GUEST_READ_ONLY",
+                "message": "관람 계정은 샘플 체험만 가능해요. 팀 데이터는 사용할 수 없어요.",
+            },
+        )
     return current_session.user
+
+
+@router.post("/guest", response_model=AuthResponse, summary="관람용 샘플 체험 로그인")
+def guest_login(
+    request: Request, response: Response, database_session: DatabaseSession
+) -> AuthResponse:
+    settings = request.app.state.settings
+
+    # 이미 로그인한 팀원과 관람자의 유효한 세션은 덮어쓰지 않는다.
+    try:
+        current = auth_service.get_authenticated_session(
+            database_session, request.cookies.get(settings.cookie_name)
+        )
+
+        return AuthResponse(
+            user=PublicUser.model_validate(current.user), expires_in=current.expires_in
+        )
+    except HTTPException as error:
+        if error.status_code != 401:
+            raise
+    result = auth_service.guest_login(database_session)
+
+    response.set_cookie(
+        key=settings.cookie_name,
+        value=result.session_token,
+        max_age=result.expires_in,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return AuthResponse(user=PublicUser.model_validate(result.user), expires_in=result.expires_in)
 
 
 @router.post(

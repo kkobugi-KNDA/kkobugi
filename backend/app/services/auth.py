@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import LoginAttempt, LoginSession, User
+from app.models import GUEST_USERNAME, LoginAttempt, LoginSession, User
 from app.security import hash_password, hash_token, new_session_token, verify_password
 
 _SESSION_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
@@ -149,7 +149,7 @@ def login(
     password_matches = verify_password(password, password_hash)
 
     # 없는 계정, 잘못된 비밀번호, 비활성 계정은 같은 오류를 반환한다.
-    if user is None or not password_matches or not user.is_active:
+    if user is None or not password_matches or not user.is_active or user.is_guest:
         _record_failed_login(database_session, attempt_key, current_time, settings)
         raise HTTPException(
             status_code=401,
@@ -195,6 +195,53 @@ def login(
         )
 
     raise _authentication_unavailable()
+
+
+def guest_login(database_session: Session) -> LoginResult:
+    """공개 비밀번호 없이 관람 전용 세션을 발급한다. 팀 데이터 API는 별도로 거부한다."""
+    current_time = int(time.time())
+
+    expires_in = 2 * 60 * 60
+
+    try:
+        user = database_session.scalar(select(User).where(User.username == GUEST_USERNAME))
+
+        if user is None:
+            user = User(
+                username=GUEST_USERNAME,
+                display_name="관람자",
+                password_hash=hash_password(new_session_token()),
+            )
+
+            database_session.add(user)
+            try:
+                database_session.commit()
+            except IntegrityError:
+                # 여러 QR 접속이 동시에 들어와도 예약 계정은 하나만 만든다.
+                database_session.rollback()
+                user = database_session.scalar(select(User).where(User.username == GUEST_USERNAME))
+        if user is None or not user.is_active:
+            raise _authentication_required()
+        session_token = new_session_token()
+
+        database_session.execute(
+            delete(LoginSession).where(
+                LoginSession.user_id == user.id, LoginSession.expires_at <= current_time
+            )
+        )
+        database_session.add(
+            LoginSession(
+                user_id=user.id,
+                token_hash=hash_token(session_token),
+                created_at=current_time,
+                expires_at=current_time + expires_in,
+            )
+        )
+        database_session.commit()
+        return LoginResult(user=user, session_token=session_token, expires_in=expires_in)
+    except SQLAlchemyError:
+        database_session.rollback()
+        raise _authentication_unavailable() from None
 
 
 def get_authenticated_session(

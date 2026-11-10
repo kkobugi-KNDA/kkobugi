@@ -61,6 +61,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 export const api = {
   me: (signal?: AbortSignal) => request<AuthResponse>('/auth/me', { signal }),
+  guest: (signal?: AbortSignal) =>
+    request<AuthResponse>('/auth/guest', { method: 'POST', body: '{}', signal }),
   login: (username: string, password: string) =>
     request<AuthResponse>('/auth/login', {
       method: 'POST',

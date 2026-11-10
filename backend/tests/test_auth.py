@@ -137,7 +137,8 @@ def test_login_sets_private_cookie_and_returns_public_user(auth_client):
 
     assert set(response_data) == {"user", "expires_in"}
     assert response_data["expires_in"] == 43_200
-    assert set(response_data["user"]) == {"id", "username", "display_name"}
+    assert set(response_data["user"]) == {"id", "username", "display_name", "is_guest"}
+    assert response_data["user"]["is_guest"] is False
     assert response_data["user"]["username"] == "alice"
     assert response_data["user"]["display_name"] == "테스트 사용자 하나"
     cookie_header = response.headers["set-cookie"].lower()

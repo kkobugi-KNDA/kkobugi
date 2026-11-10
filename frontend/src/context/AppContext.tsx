@@ -32,6 +32,7 @@ interface AppContextValue {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   enterDemo: () => void;
+  enterGuest: () => Promise<void>;
   refreshDatasets: () => Promise<void>;
   registerDataset: (dataset: DatasetSummary) => void;
   deleteDataset: (id: string) => Promise<void>;
@@ -85,27 +86,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const requestAccount = accountVersion.current;
 
-    if (sessionStorage.getItem('kkobugi:preview') === '1') {
+    const guestRequested = new URLSearchParams(window.location.search).get('guest') === '1';
+
+    if (!guestRequested && sessionStorage.getItem('kkobugi:preview') === '1') {
       setMode('demo');
       setUser({ id: 0, username: 'preview', display_name: '미리보기' });
       setBooting(false);
       return;
     }
     const controller = new AbortController();
-    api
-      .me(controller.signal)
+
+    // QR의 게스트 진입은 실제 쿠키 세션을 만든다. 기존 팀원 세션은 서버가 유지한다.
+    const authentication = guestRequested
+      ? api.guest(controller.signal)
+      : api.me(controller.signal);
+
+    authentication
       .then((result) => {
         if (!controller.signal.aborted && accountVersion.current === requestAccount) {
+          if (guestRequested) sessionStorage.removeItem('kkobugi:preview');
+          setMode(result.user.is_guest ? 'demo' : 'live');
           setUser(result.user);
         }
       })
-      .catch(() => {})
+      .catch((failure) => {
+        if (
+          guestRequested &&
+          !controller.signal.aborted &&
+          accountVersion.current === requestAccount
+        ) {
+          toast(errorMessage(failure), 'error');
+        }
+      })
       .finally(() => {
         if (!controller.signal.aborted && accountVersion.current === requestAccount)
           setBooting(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [toast]);
   useEffect(() => {
     const expired = () => {
       invalidateAccount();
@@ -328,10 +346,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser({ id: 0, username: 'preview', display_name: '미리보기' });
     setBooting(false);
   }, [invalidateAccount]);
+
+  const enterGuest = useCallback(async () => {
+    const requestAccount = invalidateAccount();
+
+    const result = await api.guest();
+
+    if (accountVersion.current !== requestAccount) return;
+    sessionStorage.removeItem('kkobugi:preview');
+    setMode(result.user.is_guest ? 'demo' : 'live');
+    setSelectedDatasetId(null);
+    setSelectedRunId(null);
+    setDatasets([]);
+    setRuns([]);
+    setUser(result.user);
+    setBooting(false);
+  }, [invalidateAccount]);
+
   const logout = useCallback(async () => {
     const requestAccount = invalidateAccount();
 
-    if (mode === 'live') await api.logout();
+    if (mode === 'live' || user?.is_guest) await api.logout();
     if (accountVersion.current !== requestAccount) return;
     sessionStorage.removeItem('kkobugi:preview');
     setUser(null);
@@ -341,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedDatasetId(null);
     setSelectedRunId(null);
     setBooting(false);
-  }, [mode, invalidateAccount]);
+  }, [mode, user?.is_guest, invalidateAccount]);
   const value = useMemo(
     () => ({
       user,
@@ -358,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       enterDemo,
+      enterGuest,
       refreshDatasets,
       registerDataset,
       deleteDataset,
@@ -380,6 +416,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       enterDemo,
+      enterGuest,
       refreshDatasets,
       registerDataset,
       deleteDataset,
