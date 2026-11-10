@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   restoreDataset: vi.fn(),
   logout: vi.fn(),
   login: vi.fn(),
+  guest: vi.fn(),
 }));
 
 vi.mock('../lib/api', () => ({
@@ -21,12 +22,58 @@ vi.mock('../lib/api', () => ({
 beforeEach(() => {
   vi.resetAllMocks();
   sessionStorage.clear();
+  window.history.replaceState({}, '', '/');
   mocks.me.mockResolvedValue({ user: { id: 1, username: 'tester', display_name: '테스터' } });
   mocks.datasets.mockResolvedValue({ items: [DEMO_DATASET_DETAIL.dataset], total: 1 });
   mocks.runs.mockResolvedValue({ items: [DEMO_RUN_DETAIL.run], total: 1 });
   mocks.deleteDataset.mockResolvedValue(undefined);
   mocks.restoreDataset.mockResolvedValue(DEMO_DATASET_DETAIL);
   mocks.logout.mockResolvedValue(undefined);
+  mocks.guest.mockResolvedValue({
+    user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+  });
+});
+
+describe('QR 게스트 세션', () => {
+  it('guest=1로 들어오면 실제 게스트 세션과 예시 데이터로 시작한다', async () => {
+    window.history.replaceState({}, '', '/?guest=1');
+
+    const hook = renderHook(() => useApp(), { wrapper: AppProvider });
+
+    await waitFor(() => expect(hook.result.current.user?.is_guest).toBe(true));
+    expect(mocks.guest).toHaveBeenCalledTimes(1);
+    expect(mocks.me).not.toHaveBeenCalled();
+    expect(hook.result.current.mode).toBe('demo');
+    expect(hook.result.current.datasets).toEqual([DEMO_DATASET_DETAIL.dataset]);
+    expect(mocks.datasets).not.toHaveBeenCalled();
+    await act(() => hook.result.current.logout());
+    expect(mocks.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('새로고침에서 게스트 세션을 읽어 예시 모드를 복원한다', async () => {
+    mocks.me.mockResolvedValue({
+      user: { id: 99, username: 'guest', display_name: '게스트', is_guest: true },
+    });
+
+    const hook = renderHook(() => useApp(), { wrapper: AppProvider });
+
+    await waitFor(() => expect(hook.result.current.user?.is_guest).toBe(true));
+    expect(hook.result.current.mode).toBe('demo');
+    expect(mocks.datasets).not.toHaveBeenCalled();
+  });
+
+  it('QR로 들어온 기존 팀원은 실제 계정을 유지한다', async () => {
+    window.history.replaceState({}, '', '/?guest=1');
+    mocks.guest.mockResolvedValue({
+      user: { id: 1, username: 'tester', display_name: '테스터', is_guest: false },
+    });
+
+    const hook = renderHook(() => useApp(), { wrapper: AppProvider });
+
+    await waitFor(() => expect(hook.result.current.user?.id).toBe(1));
+    expect(hook.result.current.mode).toBe('live');
+    await waitFor(() => expect(mocks.datasets).toHaveBeenCalledTimes(1));
+  });
 });
 
 function deferred<T>() {

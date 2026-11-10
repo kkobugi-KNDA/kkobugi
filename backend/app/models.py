@@ -8,6 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column, validates
 from app.db import Base
 from app.security import normalize_username
 
+GUEST_USERNAME = "__kkobugi_guest__"
+
 
 def utc_timestamp() -> int:
     return int(time.time())
@@ -29,6 +31,11 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     created_at: Mapped[int] = mapped_column(Integer, default=utc_timestamp, nullable=False)
+
+    @property
+    def is_guest(self) -> bool:
+        # 별도 권한 컬럼 없이 예약 계정만 관람자로 취급한다.
+        return self.username == GUEST_USERNAME
 
     @validates("username")
     def validate_username(self, _: str, username: str) -> str:

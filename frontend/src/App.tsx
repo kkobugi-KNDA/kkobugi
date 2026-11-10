@@ -352,7 +352,11 @@ function Shell() {
             <div className="topbar-actions">
               <ThemeToggle />
               <ExpertiseToggle />
-              {mode === 'demo' && <Badge tone="amber">미리보기 · 예시 데이터</Badge>}
+              {mode === 'demo' && (
+                <Badge tone="amber">
+                  {user?.is_guest ? '게스트 · 관람 전용' : '미리보기 · 예시 데이터'}
+                </Badge>
+              )}
               <Dropdown.Root>
                 <Dropdown.Trigger asChild>
                   <button className="icon-button notification-button" aria-label="학습 상태 알림">
@@ -415,7 +419,9 @@ function Shell() {
             <div className="preview-banner">
               <span>
                 <span className="preview-led" />
-                화면 구성과 동작을 확인하는 미리보기입니다. 데이터와 학습 지표는 예시예요.
+                {user?.is_guest
+                  ? '게스트로 접속했어요. 예시 데이터로 시뮬레이션을 체험하며 팀의 기록은 변경하지 않아요.'
+                  : '화면 구성과 동작을 확인하는 미리보기입니다. 데이터와 학습 지표는 예시예요.'}
               </span>
               <button onClick={signout}>
                 실제 계정으로 로그인
@@ -440,18 +446,22 @@ function Shell() {
             </footer>
           </main>
         </div>
-        <AssistantPet
-          onOpen={openFromPet}
-          working={running.length > 0}
-          notice={assistantOpen ? '' : notice}
-          onDismissNotice={dismissNotice}
-        />
-        <Assistant
-          open={assistantOpen}
-          onOpenChange={setAssistantOpen}
-          detail={assistantDetail}
-          getSimulationContext={getSimulationContext}
-        />
+        {!user?.is_guest && (
+          <>
+            <AssistantPet
+              onOpen={openFromPet}
+              working={running.length > 0}
+              notice={assistantOpen ? '' : notice}
+              onDismissNotice={dismissNotice}
+            />
+            <Assistant
+              open={assistantOpen}
+              onOpenChange={setAssistantOpen}
+              detail={assistantDetail}
+              getSimulationContext={getSimulationContext}
+            />
+          </>
+        )}
         <Drawer
           open={helpOpen}
           onOpenChange={setHelpOpen}
@@ -504,6 +514,17 @@ function Shell() {
 }
 function AuthenticatedRoutes() {
   const { user, booting, toasts } = useApp();
+
+  const navigate = useNavigate();
+
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!booting && user && new URLSearchParams(location.search).get('guest') === '1') {
+      navigate('/simulation', { replace: true });
+    }
+  }, [booting, user, location.search, navigate]);
+
   return (
     <>
       <a className="skip-link" href="#main-content">

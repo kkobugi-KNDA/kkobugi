@@ -21,6 +21,7 @@ import LiveChart from '../components/LiveChart';
 import { Notice } from '../components/ui';
 import '../components/ax.css';
 import './simulation.css';
+import GuestSimulation from './GuestSimulation';
 
 const PumpSimulationScene = lazy(() => import('../components/PumpSimulationScene'));
 
@@ -39,6 +40,12 @@ const emptyPartInputs: PartInputs = {
 };
 
 export default function SimulationPage() {
+  const { user } = useApp();
+
+  return user?.is_guest ? <GuestSimulation /> : <MemberSimulationPage />;
+}
+
+function MemberSimulationPage() {
   const { runs, datasets, user, mode, selectedRunId, setSelectedRunId, refreshRuns } = useApp();
 
   const { isExpert } = useExpertise();

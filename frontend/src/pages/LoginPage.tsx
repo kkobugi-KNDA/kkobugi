@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ArrowRight, Eye, EyeOff, LockKeyhole, LoaderCircle, Play, UserRound } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { errorMessage } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
 import LoginVideo from '../components/LoginVideo';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -20,7 +21,10 @@ export function Brand({ compact = false }: { compact?: boolean }) {
   );
 }
 export default function LoginPage() {
-  const { login, enterDemo } = useApp();
+  const { login, enterDemo, enterGuest } = useApp();
+
+  const navigate = useNavigate();
+
   const [username, setUsername] = useState(''),
     [password, setPassword] = useState(''),
     [visible, setVisible] = useState(false),
@@ -35,6 +39,20 @@ export default function LoginPage() {
       await login(username.trim(), password);
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function visitAsGuest() {
+    if (busy) return;
+    setError('');
+    setBusy(true);
+    try {
+      await enterGuest();
+      navigate('/simulation', { replace: true });
+    } catch (failure) {
+      setError(errorMessage(failure));
     } finally {
       setBusy(false);
     }
@@ -125,7 +143,12 @@ export default function LoginPage() {
             또는
             <span />
           </div>
-          <button className="button preview-button" onClick={enterDemo}>
+          <button className="button preview-button" onClick={visitAsGuest} disabled={busy}>
+            {busy ? <LoaderCircle className="spin" size={15} /> : <UserRound size={15} />}
+            게스트로 둘러보기
+            <ArrowRight size={15} />
+          </button>
+          <button className="button preview-button" onClick={enterDemo} disabled={busy}>
             <Play size={15} />
             화면 미리보기
             <ArrowRight size={15} />
